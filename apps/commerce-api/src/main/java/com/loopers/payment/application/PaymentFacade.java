@@ -2,6 +2,7 @@ package com.loopers.payment.application;
 
 import com.loopers.order.domain.Order;
 import com.loopers.order.domain.OrderService;
+import com.loopers.payment.application.event.OrderPaymentEventPublisher;
 import com.loopers.payment.domain.Payment;
 import com.loopers.payment.domain.PaymentGateway;
 import com.loopers.payment.domain.PaymentGatewayPaymentCommand;
@@ -22,6 +23,7 @@ public class PaymentFacade {
     private final OrderService orderService;
     private final PaymentService paymentService;
     private final PaymentGateway paymentGateway;
+    private final OrderPaymentEventPublisher orderPaymentEventPublisher;
 
     public PaymentInfo requestPayment(RequestPaymentCommand command) {
         Order order = orderService.getOrder(command.orderId());
@@ -60,13 +62,21 @@ public class PaymentFacade {
         ZonedDateTime completedAt = ZonedDateTime.now();
 
         if (command.isSucceeded()) {
+            boolean newlyPaid = !order.isPaid();
             payment.markSucceeded(command.transactionKey(), command.reason(), completedAt);
             order.completePayment();
+            if (newlyPaid) {
+                orderPaymentEventPublisher.publishPaid(payment, completedAt);
+            }
             return;
         }
 
+        boolean newlyPaymentFailed = !order.isPaymentFailed();
         payment.markFailed(command.transactionKey(), command.failureReason(), command.reason(), completedAt);
         order.failPayment();
+        if (newlyPaymentFailed) {
+            orderPaymentEventPublisher.publishFailed(payment, completedAt);
+        }
     }
 
     private void validateOrder(Long userId, Order order) {

@@ -106,6 +106,14 @@ public class Order extends BaseEntity {
         return status == OrderStatus.PAYMENT_PENDING;
     }
 
+    public boolean isPaid() {
+        return status == OrderStatus.PAID;
+    }
+
+    public boolean isPaymentFailed() {
+        return status == OrderStatus.PAYMENT_FAILED;
+    }
+
     public void validatePayable() {
         if (!isPayable()) {
             throw new CoreException(ErrorType.CONFLICT, "결제할 수 없는 주문입니다.");

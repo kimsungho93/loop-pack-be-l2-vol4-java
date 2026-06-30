@@ -2,6 +2,7 @@ package com.loopers.payment.application;
 
 import com.loopers.order.domain.Order;
 import com.loopers.order.domain.OrderService;
+import com.loopers.payment.application.event.OrderPaymentEventPublisher;
 import com.loopers.payment.domain.Payment;
 import com.loopers.payment.domain.PaymentFailureReason;
 import com.loopers.payment.domain.PaymentGatewayTransactionDetail;
@@ -19,6 +20,7 @@ public class PaymentRecoveryResultHandler {
 
     private final PaymentService paymentService;
     private final OrderService orderService;
+    private final OrderPaymentEventPublisher orderPaymentEventPublisher;
 
     @Transactional
     public void applyTransaction(
@@ -38,11 +40,16 @@ public class PaymentRecoveryResultHandler {
 
         Order order = orderService.getOrder(payment.getOrderId());
         if (transaction.status() == PgPaymentStatus.SUCCESS) {
+            boolean newlyPaid = !order.isPaid();
             payment.markSucceeded(transaction.transactionKey(), transaction.reason(), completedAt);
             order.completePayment();
+            if (newlyPaid) {
+                orderPaymentEventPublisher.publishPaid(payment, completedAt);
+            }
             return;
         }
 
+        boolean newlyPaymentFailed = !order.isPaymentFailed();
         payment.markFailed(
             transaction.transactionKey(),
             PgPaymentFailureReason.resolve(transaction.reason()),
@@ -50,6 +57,9 @@ public class PaymentRecoveryResultHandler {
             completedAt
         );
         order.failPayment();
+        if (newlyPaymentFailed) {
+            orderPaymentEventPublisher.publishFailed(payment, completedAt);
+        }
     }
 
     @Transactional

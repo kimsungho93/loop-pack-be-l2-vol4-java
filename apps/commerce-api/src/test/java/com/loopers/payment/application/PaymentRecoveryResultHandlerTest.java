@@ -5,6 +5,7 @@ import com.loopers.order.domain.OrderItem;
 import com.loopers.order.domain.OrderItems;
 import com.loopers.order.domain.OrderService;
 import com.loopers.order.domain.OrderStatus;
+import com.loopers.payment.application.event.OrderPaymentEventPublisher;
 import com.loopers.payment.domain.CardType;
 import com.loopers.payment.domain.Payment;
 import com.loopers.payment.domain.PaymentFailureReason;
@@ -46,6 +47,9 @@ class PaymentRecoveryResultHandlerTest {
     @Mock
     private OrderService orderService;
 
+    @Mock
+    private OrderPaymentEventPublisher orderPaymentEventPublisher;
+
     @DisplayName("PG 조회 결과를 반영할 때")
     @Nested
     class ApplyTransaction {
@@ -56,7 +60,11 @@ class PaymentRecoveryResultHandlerTest {
             // arrange
             Payment payment = createPendingPayment();
             Order order = createOrder();
-            PaymentRecoveryResultHandler handler = new PaymentRecoveryResultHandler(paymentService, orderService);
+            PaymentRecoveryResultHandler handler = new PaymentRecoveryResultHandler(
+                paymentService,
+                orderService,
+                orderPaymentEventPublisher
+            );
             when(paymentService.getPayment(payment.getId())).thenReturn(payment);
             when(orderService.getOrder(ORDER_ID)).thenReturn(order);
 
@@ -73,6 +81,70 @@ class PaymentRecoveryResultHandlerTest {
                 () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
             );
+            verify(orderPaymentEventPublisher).publishPaid(payment, COMPLETED_AT);
+        }
+
+        @DisplayName("결제가 이미 성공이어도 주문이 아직 완료되지 않았다면 결제 완료 이벤트를 발행한다.")
+        @Test
+        void publishesPaidEvent_whenOrderNewlyBecomesPaidEvenIfPaymentAlreadySucceeded() {
+            // arrange
+            Payment payment = createPendingPayment();
+            payment.markSucceeded(TRANSACTION_KEY, "success", COMPLETED_AT);
+            Order order = createOrder();
+            PaymentRecoveryResultHandler handler = new PaymentRecoveryResultHandler(
+                paymentService,
+                orderService,
+                orderPaymentEventPublisher
+            );
+            when(paymentService.getPayment(payment.getId())).thenReturn(payment);
+            when(orderService.getOrder(ORDER_ID)).thenReturn(order);
+
+            // act
+            handler.applyTransaction(
+                payment.getId(),
+                createTransaction(PgPaymentStatus.SUCCESS, "success"),
+                COMPLETED_AT,
+                NEXT_RECOVERY_AT
+            );
+
+            // assert
+            assertAll(
+                () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
+                () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
+            );
+            verify(orderPaymentEventPublisher).publishPaid(payment, COMPLETED_AT);
+        }
+
+        @DisplayName("이미 주문까지 결제 완료 상태이면 결제 완료 이벤트를 다시 발행하지 않는다.")
+        @Test
+        void doesNotPublishPaidEvent_whenTransactionAlreadySucceeded() {
+            // arrange
+            Payment payment = createPendingPayment();
+            payment.markSucceeded(TRANSACTION_KEY, "success", COMPLETED_AT);
+            Order order = createOrder();
+            order.completePayment();
+            PaymentRecoveryResultHandler handler = new PaymentRecoveryResultHandler(
+                paymentService,
+                orderService,
+                orderPaymentEventPublisher
+            );
+            when(paymentService.getPayment(payment.getId())).thenReturn(payment);
+            when(orderService.getOrder(ORDER_ID)).thenReturn(order);
+
+            // act
+            handler.applyTransaction(
+                payment.getId(),
+                createTransaction(PgPaymentStatus.SUCCESS, "success"),
+                COMPLETED_AT,
+                NEXT_RECOVERY_AT
+            );
+
+            // assert
+            assertAll(
+                () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
+                () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
+            );
+            verify(orderPaymentEventPublisher, never()).publishPaid(payment, COMPLETED_AT);
         }
 
         @DisplayName("대기 거래이면 다음 복구 시각만 예약한다.")
@@ -80,7 +152,11 @@ class PaymentRecoveryResultHandlerTest {
         void schedulesRecovery_whenTransactionIsPending() {
             // arrange
             Payment payment = createPendingPayment();
-            PaymentRecoveryResultHandler handler = new PaymentRecoveryResultHandler(paymentService, orderService);
+            PaymentRecoveryResultHandler handler = new PaymentRecoveryResultHandler(
+                paymentService,
+                orderService,
+                orderPaymentEventPublisher
+            );
             when(paymentService.getPayment(payment.getId())).thenReturn(payment);
 
             // act
@@ -98,6 +174,8 @@ class PaymentRecoveryResultHandlerTest {
                 () -> assertThat(payment.getLastRecoveryReason()).isEqualTo("pending")
             );
             verify(orderService, never()).getOrder(ORDER_ID);
+            verify(orderPaymentEventPublisher, never()).publishPaid(payment, COMPLETED_AT);
+            verify(orderPaymentEventPublisher, never()).publishFailed(payment, COMPLETED_AT);
         }
 
         @DisplayName("실패 거래이면 결제와 주문을 실패 처리한다.")
@@ -106,7 +184,11 @@ class PaymentRecoveryResultHandlerTest {
             // arrange
             Payment payment = createPendingPayment();
             Order order = createOrder();
-            PaymentRecoveryResultHandler handler = new PaymentRecoveryResultHandler(paymentService, orderService);
+            PaymentRecoveryResultHandler handler = new PaymentRecoveryResultHandler(
+                paymentService,
+                orderService,
+                orderPaymentEventPublisher
+            );
             when(paymentService.getPayment(payment.getId())).thenReturn(payment);
             when(orderService.getOrder(ORDER_ID)).thenReturn(order);
 
@@ -124,6 +206,7 @@ class PaymentRecoveryResultHandlerTest {
                 () -> assertThat(payment.getFailureReason()).isEqualTo(PaymentFailureReason.LIMIT_EXCEEDED),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED)
             );
+            verify(orderPaymentEventPublisher).publishFailed(payment, COMPLETED_AT);
         }
     }
 

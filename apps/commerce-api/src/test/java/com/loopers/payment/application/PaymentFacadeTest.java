@@ -6,6 +6,7 @@ import com.loopers.order.domain.OrderItems;
 import com.loopers.order.domain.OrderService;
 import com.loopers.order.domain.OrderStatus;
 import com.loopers.order.domain.vo.OrderAmountSnapshot;
+import com.loopers.payment.application.event.OrderPaymentEventPublisher;
 import com.loopers.payment.domain.CardType;
 import com.loopers.payment.domain.Payment;
 import com.loopers.payment.domain.PaymentFailureReason;
@@ -61,6 +62,9 @@ class PaymentFacadeTest {
 
     @Mock
     private PaymentGateway paymentGateway;
+
+    @Mock
+    private OrderPaymentEventPublisher orderPaymentEventPublisher;
 
     @InjectMocks
     private PaymentFacade paymentFacade;
@@ -244,6 +248,68 @@ class PaymentFacadeTest {
                 () -> assertThat(payment.getPgReason()).isEqualTo(SUCCESS_REASON),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
             );
+            verify(orderPaymentEventPublisher).publishPaid(any(Payment.class), any(ZonedDateTime.class));
+        }
+
+        @DisplayName("결제가 이미 성공이어도 주문이 아직 완료되지 않았다면 결제 완료 이벤트를 발행한다.")
+        @Test
+        void publishesPaidEvent_whenOrderNewlyBecomesPaidEvenIfPaymentAlreadySucceeded() {
+            // arrange
+            Payment payment = createPendingPayment();
+            payment.markSucceeded(TRANSACTION_KEY, SUCCESS_REASON, ZonedDateTime.now());
+            Order order = createOrder();
+            PaymentCallbackCommand command = new PaymentCallbackCommand(
+                TRANSACTION_KEY,
+                ORDER_ID,
+                AMOUNT,
+                CardType.SAMSUNG,
+                PgPaymentStatus.SUCCESS,
+                null,
+                SUCCESS_REASON
+            );
+            when(paymentService.getPaymentByPgTransactionKey(TRANSACTION_KEY)).thenReturn(payment);
+            when(orderService.getOrder(ORDER_ID)).thenReturn(order);
+
+            // act
+            paymentFacade.handleCallback(command);
+
+            // assert
+            assertAll(
+                () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
+                () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
+            );
+            verify(orderPaymentEventPublisher).publishPaid(any(Payment.class), any(ZonedDateTime.class));
+        }
+
+        @DisplayName("이미 주문까지 결제 완료 상태이면 결제 완료 이벤트를 다시 발행하지 않는다.")
+        @Test
+        void doesNotPublishPaidEvent_whenSuccessCallbackAlreadyApplied() {
+            // arrange
+            Payment payment = createPendingPayment();
+            payment.markSucceeded(TRANSACTION_KEY, SUCCESS_REASON, ZonedDateTime.now());
+            Order order = createOrder();
+            order.completePayment();
+            PaymentCallbackCommand command = new PaymentCallbackCommand(
+                TRANSACTION_KEY,
+                ORDER_ID,
+                AMOUNT,
+                CardType.SAMSUNG,
+                PgPaymentStatus.SUCCESS,
+                null,
+                SUCCESS_REASON
+            );
+            when(paymentService.getPaymentByPgTransactionKey(TRANSACTION_KEY)).thenReturn(payment);
+            when(orderService.getOrder(ORDER_ID)).thenReturn(order);
+
+            // act
+            paymentFacade.handleCallback(command);
+
+            // assert
+            assertAll(
+                () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
+                () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
+            );
+            verify(orderPaymentEventPublisher, never()).publishPaid(any(Payment.class), any(ZonedDateTime.class));
         }
 
         @DisplayName("실패 콜백이 도착하면 결제와 주문을 실패 상태로 바꾼다.")
@@ -275,6 +341,7 @@ class PaymentFacadeTest {
                 () -> assertThat(payment.getPgReason()).isEqualTo(LIMIT_EXCEEDED_REASON),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED)
             );
+            verify(orderPaymentEventPublisher).publishFailed(any(Payment.class), any(ZonedDateTime.class));
         }
 
         @DisplayName("PG 실패 사유를 분류할 수 없어도 최종 실패 상태로 기록한다.")
@@ -354,6 +421,7 @@ class PaymentFacadeTest {
             // assert
             assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
             verifyNoInteractions(orderService);
+            verifyNoInteractions(orderPaymentEventPublisher);
         }
     }
 
