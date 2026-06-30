@@ -1,7 +1,6 @@
 package com.loopers.product.application;
 
 import com.loopers.like.application.LikeFacade;
-import com.loopers.like.domain.LikeChange;
 import com.loopers.like.domain.LikeService;
 import com.loopers.like.domain.ProductLikeCountChange;
 import com.loopers.like.domain.ProductLikeCountChangeRepository;
@@ -160,7 +159,7 @@ class ProductLikeSummarySynchronizerIntegrationTest {
 
     private void saveIncreaseChanges(Product product, int count) {
         for (int i = 0; i < count; i++) {
-            productLikeCountChangeRepository.save(ProductLikeCountChange.from(LikeChange.increased(product.getId())));
+            productLikeCountChangeRepository.save(ProductLikeCountChange.increase(product.getId()));
         }
     }
 

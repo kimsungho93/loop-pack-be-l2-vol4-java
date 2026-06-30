@@ -15,7 +15,7 @@ class ProductLikeCountChangeTest {
         Long productId = 101L;
 
         // act
-        ProductLikeCountChange change = ProductLikeCountChange.from(LikeChange.increased(productId));
+        ProductLikeCountChange change = ProductLikeCountChange.increase(productId);
 
         // assert
         assertAll(
@@ -31,7 +31,7 @@ class ProductLikeCountChangeTest {
         Long productId = 101L;
 
         // act
-        ProductLikeCountChange change = ProductLikeCountChange.from(LikeChange.decreased(productId));
+        ProductLikeCountChange change = ProductLikeCountChange.decrease(productId);
 
         // assert
         assertAll(

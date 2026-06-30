@@ -28,11 +28,13 @@ public class LikeFacade {
     private final LikeService likeService;
     private final LikeCommandService likeCommandService;
 
+    @Transactional
     public void like(Long userId, Long productId) {
         productService.getProduct(productId);
         likeCommandService.like(userId, productId);
     }
 
+    @Transactional
     public void unlike(Long userId, Long productId) {
         likeCommandService.unlike(userId, productId);
     }

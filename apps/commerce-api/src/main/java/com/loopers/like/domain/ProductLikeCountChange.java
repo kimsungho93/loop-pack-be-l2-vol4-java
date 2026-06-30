@@ -27,11 +27,12 @@ public class ProductLikeCountChange extends BaseEntity {
         this.changeAmount = changeAmount;
     }
 
-    public static ProductLikeCountChange from(LikeChange change) {
-        if (!change.hasCountChange()) {
-            throw new CoreException(ErrorType.BAD_REQUEST, "좋아요 수 변경이 없습니다.");
-        }
-        return new ProductLikeCountChange(change.productId(), change.countChangeAmount());
+    public static ProductLikeCountChange increase(Long productId) {
+        return new ProductLikeCountChange(productId, 1);
+    }
+
+    public static ProductLikeCountChange decrease(Long productId) {
+        return new ProductLikeCountChange(productId, -1);
     }
 
     @Override
