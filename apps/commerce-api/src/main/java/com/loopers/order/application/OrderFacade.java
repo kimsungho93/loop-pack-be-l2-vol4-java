@@ -3,6 +3,7 @@ package com.loopers.order.application;
 import com.loopers.coupon.domain.CouponService;
 import com.loopers.coupon.domain.CouponUse;
 import com.loopers.coupon.domain.vo.CouponDiscount;
+import com.loopers.order.application.event.OrderEventPublisher;
 import com.loopers.order.domain.Order;
 import com.loopers.order.domain.OrderItems;
 import com.loopers.order.domain.OrderSearchPeriod;
@@ -27,6 +28,7 @@ public class OrderFacade {
     private final ProductStockService productStockService;
     private final CouponService couponService;
     private final OrderService orderService;
+    private final OrderEventPublisher orderEventPublisher;
 
     @Transactional
     public OrderInfo createOrder(CreateOrderCommand command) {
@@ -34,7 +36,9 @@ public class OrderFacade {
         OrderAmountSnapshot amountSnapshot = applyCoupon(command, orderItems);
         productStockService.deduct(orderItems.quantitiesByProductId());
         Order order = Order.create(command.userId(), orderItems, command.userCouponId(), amountSnapshot);
-        return OrderInfo.from(orderService.saveOrder(order));
+        OrderInfo info = OrderInfo.from(orderService.saveOrder(order));
+        orderEventPublisher.publishCreated(info, ZonedDateTime.now());
+        return info;
     }
 
     private OrderAmountSnapshot applyCoupon(CreateOrderCommand command, OrderItems orderItems) {

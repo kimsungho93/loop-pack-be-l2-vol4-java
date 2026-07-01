@@ -7,6 +7,7 @@ import com.loopers.shared.presentation.ApiResponse;
 import com.loopers.shared.presentation.PageResponse;
 import com.loopers.shared.pagination.PageResult;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -32,8 +33,11 @@ public class ProductV1Controller {
     }
 
     @GetMapping("/{productId}")
-    public ApiResponse<ProductV1Dto.ProductResponse> getProduct(@PathVariable Long productId) {
-        ProductDetailInfo info = productFacade.getProduct(productId);
+    public ApiResponse<ProductV1Dto.ProductResponse> getProduct(
+        @AuthenticationPrincipal Long userId,
+        @PathVariable Long productId
+    ) {
+        ProductDetailInfo info = productFacade.getProduct(productId, userId);
         return ApiResponse.success(ProductV1Dto.ProductResponse.from(info));
     }
 }
