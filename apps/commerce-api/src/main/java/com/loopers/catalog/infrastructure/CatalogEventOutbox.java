@@ -61,6 +61,9 @@ public class CatalogEventOutbox extends BaseEntity {
     @Column(name = "retry_count", nullable = false)
     private int retryCount;
 
+    @Column(name = "next_retry_at", nullable = false)
+    private ZonedDateTime nextRetryAt;
+
     @Column(name = "last_error", length = 500)
     private String lastError;
 
@@ -84,6 +87,7 @@ public class CatalogEventOutbox extends BaseEntity {
         this.occurredAt = occurredAt;
         this.status = CatalogEventOutboxStatus.PENDING;
         this.retryCount = 0;
+        this.nextRetryAt = occurredAt;
     }
 
     public static CatalogEventOutbox pending(
@@ -103,10 +107,17 @@ public class CatalogEventOutbox extends BaseEntity {
         this.lastError = null;
     }
 
-    public void markFailed(String reason) {
-        this.status = CatalogEventOutboxStatus.FAILED;
+    public void markPublishFailed(String reason, int maxRetryCount, ZonedDateTime failedAt) {
         this.retryCount++;
         this.lastError = trim(reason);
+
+        if (retryCount >= maxRetryCount) {
+            this.status = CatalogEventOutboxStatus.RETRY_EXCEEDED;
+            return;
+        }
+
+        this.status = CatalogEventOutboxStatus.PENDING;
+        this.nextRetryAt = failedAt.plusSeconds(backoffSeconds());
     }
 
     @Override
@@ -138,6 +149,9 @@ public class CatalogEventOutbox extends BaseEntity {
         if (retryCount < 0) {
             throw new IllegalStateException("retryCount must not be negative");
         }
+        if (nextRetryAt == null) {
+            throw new IllegalStateException("nextRetryAt must not be null");
+        }
     }
 
     private boolean hasText(String value) {
@@ -149,5 +163,9 @@ public class CatalogEventOutbox extends BaseEntity {
             return reason;
         }
         return reason.substring(0, 500);
+    }
+
+    private long backoffSeconds() {
+        return 1L << retryCount;
     }
 }
