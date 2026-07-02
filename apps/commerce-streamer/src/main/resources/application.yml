@@ -14,7 +14,7 @@ spring:
   main:
     web-application-type: servlet
   application:
-    name: commerce-api
+    name: commerce-streamer
   profiles:
     active: local
   config:
@@ -25,9 +25,11 @@ spring:
       - logging.yml
       - monitoring.yml
 
-demo-kafka:
-  test:
-    topic-name: demo.internal.topic-v1
+commerce:
+  metrics:
+    catalog:
+      topic-name: catalog-events
+      group-id: catalog-metrics
 
 ---
 spring:
