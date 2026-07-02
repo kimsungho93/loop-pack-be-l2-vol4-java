@@ -1,12 +1,35 @@
 package com.loopers.coupon.interfaces.api;
 
+import com.loopers.coupon.application.CouponIssueRequestInfo;
 import com.loopers.coupon.application.UserCouponInfo;
+import com.loopers.coupon.domain.CouponIssueRequestStatus;
 import com.loopers.coupon.domain.CouponType;
 import com.loopers.coupon.domain.UserCouponStatus;
 
 import java.time.ZonedDateTime;
 
 public class CouponV1Dto {
+
+    public record CouponIssueRequestResponse(
+        Long requestId,
+        CouponIssueRequestStatus status,
+        Long userCouponId,
+        String reason,
+        ZonedDateTime requestedAt,
+        ZonedDateTime processedAt
+    ) {
+
+        public static CouponIssueRequestResponse from(CouponIssueRequestInfo info) {
+            return new CouponIssueRequestResponse(
+                info.requestId(),
+                info.status(),
+                info.userCouponId(),
+                info.reason(),
+                info.requestedAt(),
+                info.processedAt()
+            );
+        }
+    }
 
     public record UserCouponResponse(
         Long id,

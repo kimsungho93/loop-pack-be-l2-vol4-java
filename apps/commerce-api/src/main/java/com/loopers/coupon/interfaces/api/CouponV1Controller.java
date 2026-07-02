@@ -1,6 +1,7 @@
 package com.loopers.coupon.interfaces.api;
 
 import com.loopers.coupon.application.CouponFacade;
+import com.loopers.coupon.application.CouponIssueRequestInfo;
 import com.loopers.coupon.application.IssuedCouponInfo;
 import com.loopers.coupon.application.IssueCouponCommand;
 import com.loopers.coupon.domain.CouponIssueStatus;
@@ -9,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,5 +32,24 @@ public class CouponV1Controller {
         HttpStatus status = issuedCoupon.status() == CouponIssueStatus.ISSUED ? HttpStatus.CREATED : HttpStatus.OK;
         return ResponseEntity.status(status)
             .body(ApiResponse.success(CouponV1Dto.UserCouponResponse.from(issuedCoupon.coupon())));
+    }
+
+    @PostMapping("/{couponId}/issue-requests")
+    public ResponseEntity<ApiResponse<CouponV1Dto.CouponIssueRequestResponse>> requestIssueCoupon(
+        @AuthenticationPrincipal Long userId,
+        @PathVariable("couponId") Long couponTemplateId
+    ) {
+        CouponIssueRequestInfo info = couponFacade.requestIssue(new IssueCouponCommand(userId, couponTemplateId));
+        return ResponseEntity.accepted()
+            .body(ApiResponse.success(CouponV1Dto.CouponIssueRequestResponse.from(info)));
+    }
+
+    @GetMapping("/issue-requests/{requestId}")
+    public ResponseEntity<ApiResponse<CouponV1Dto.CouponIssueRequestResponse>> getIssueRequest(
+        @AuthenticationPrincipal Long userId,
+        @PathVariable("requestId") Long requestId
+    ) {
+        CouponIssueRequestInfo info = couponFacade.getIssueRequest(userId, requestId);
+        return ResponseEntity.ok(ApiResponse.success(CouponV1Dto.CouponIssueRequestResponse.from(info)));
     }
 }
