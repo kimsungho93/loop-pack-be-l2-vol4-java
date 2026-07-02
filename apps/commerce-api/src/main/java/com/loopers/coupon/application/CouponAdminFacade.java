@@ -22,6 +22,7 @@ public class CouponAdminFacade {
             command.type(),
             command.discountValue(),
             command.minimumOrderAmount(),
+            command.totalQuantity(),
             command.expiredAt()
         );
         return CouponInfo.from(coupon);

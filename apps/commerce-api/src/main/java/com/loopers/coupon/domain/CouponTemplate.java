@@ -5,6 +5,7 @@ import com.loopers.coupon.domain.policy.CouponDiscountPolicy;
 import com.loopers.coupon.domain.vo.CouponExpiration;
 import com.loopers.coupon.domain.vo.CouponMoney;
 import com.loopers.coupon.domain.vo.CouponName;
+import com.loopers.coupon.domain.vo.CouponQuantity;
 import com.loopers.coupon.domain.vo.DiscountValue;
 import com.loopers.shared.error.CoreException;
 import com.loopers.shared.error.ErrorType;
@@ -47,17 +48,27 @@ public class CouponTemplate extends BaseEntity {
     @AttributeOverride(name = "expiredAt", column = @Column(name = "expired_at", nullable = false))
     private CouponExpiration expiration;
 
+    @Embedded
+    @AttributeOverride(name = "value", column = @Column(name = "total_quantity"))
+    private CouponQuantity totalQuantity;
+
+    @Column(name = "issued_count", nullable = false)
+    private int issuedCount;
+
     private CouponTemplate(
         CouponName name,
         CouponType type,
         DiscountValue discountValue,
         CouponMoney minimumOrderAmount,
+        CouponQuantity totalQuantity,
         CouponExpiration expiration
     ) {
         this.name = name;
         this.type = type;
         this.discountValue = discountValue;
         this.minimumOrderAmount = minimumOrderAmount;
+        this.totalQuantity = totalQuantity;
+        this.issuedCount = 0;
         this.expiration = expiration;
     }
 
@@ -69,12 +80,25 @@ public class CouponTemplate extends BaseEntity {
         ZonedDateTime expiredAt,
         CouponDiscountPolicy policy
     ) {
+        return create(name, type, discountValue, minimumOrderAmount, null, expiredAt, policy);
+    }
+
+    public static CouponTemplate create(
+        String name,
+        CouponType type,
+        long discountValue,
+        Long minimumOrderAmount,
+        Integer totalQuantity,
+        ZonedDateTime expiredAt,
+        CouponDiscountPolicy policy
+    ) {
         confirmCanCreate(type, policy);
         return new CouponTemplate(
             CouponName.of(name),
             type,
             createDiscountValue(discountValue, policy),
             createMinimumOrderAmount(minimumOrderAmount),
+            createTotalQuantity(totalQuantity),
             CouponExpiration.of(expiredAt)
         );
     }
@@ -104,6 +128,14 @@ public class CouponTemplate extends BaseEntity {
         return name.value();
     }
 
+    public Integer getTotalQuantity() {
+        return totalQuantity == null ? null : totalQuantity.value();
+    }
+
+    public boolean hasQuantityLimit() {
+        return totalQuantity != null;
+    }
+
     private boolean isExpiredAt(ZonedDateTime now) {
         return expiration.isExpiredAt(now);
     }
@@ -121,6 +153,10 @@ public class CouponTemplate extends BaseEntity {
 
     private static CouponMoney createMinimumOrderAmount(Long minimumOrderAmount) {
         return minimumOrderAmount == null ? null : CouponMoney.of(minimumOrderAmount);
+    }
+
+    private static CouponQuantity createTotalQuantity(Integer totalQuantity) {
+        return totalQuantity == null ? null : CouponQuantity.of(totalQuantity);
     }
 
     private static void confirmCouponType(CouponType type) {

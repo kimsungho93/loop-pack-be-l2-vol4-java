@@ -12,4 +12,6 @@ public interface CouponTemplateRepository {
     Optional<CouponTemplate> findActiveById(Long couponTemplateId);
 
     PageResult<CouponTemplate> findActiveAll(PageQuery query);
+
+    boolean increaseIssuedCount(Long couponTemplateId);
 }

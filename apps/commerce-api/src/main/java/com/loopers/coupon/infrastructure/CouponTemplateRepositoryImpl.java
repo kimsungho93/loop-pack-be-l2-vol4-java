@@ -9,6 +9,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -35,5 +36,11 @@ public class CouponTemplateRepositoryImpl implements CouponTemplateRepository {
             Sort.Order.desc("id")
         ));
         return PageResult.from(couponTemplateJpaRepository.findByDeletedAtIsNull(pageable));
+    }
+
+    @Transactional
+    @Override
+    public boolean increaseIssuedCount(Long couponTemplateId) {
+        return couponTemplateJpaRepository.increaseIssuedCount(couponTemplateId) == 1;
     }
 }

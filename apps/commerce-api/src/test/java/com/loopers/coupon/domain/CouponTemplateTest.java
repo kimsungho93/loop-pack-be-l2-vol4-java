@@ -186,4 +186,66 @@ class CouponTemplateTest {
             .extracting("errorType")
             .isEqualTo(ErrorType.INTERNAL_ERROR);
     }
+
+    @DisplayName("총 수량을 지정해 생성하면, 한정 수량 쿠폰이 되고 발급 수는 0에서 시작한다.")
+    @Test
+    void createsLimitedCoupon_whenTotalQuantityIsGiven() {
+        // arrange
+        Integer totalQuantity = 100;
+
+        // act
+        CouponTemplate couponTemplate = CouponTemplate.create(
+            COUPON_NAME,
+            CouponType.FIXED,
+            2_000L,
+            10_000L,
+            totalQuantity,
+            EXPIRED_AT,
+            FIXED_POLICY
+        );
+
+        // assert
+        assertAll(
+            () -> assertThat(couponTemplate.getTotalQuantity()).isEqualTo(100),
+            () -> assertThat(couponTemplate.getIssuedCount()).isZero()
+        );
+    }
+
+    @DisplayName("총 수량 없이 생성하면, 무제한 쿠폰이 된다.")
+    @Test
+    void createsUnlimitedCoupon_whenTotalQuantityIsNull() {
+        // arrange & act
+        CouponTemplate couponTemplate = CouponTemplate.create(
+            COUPON_NAME,
+            CouponType.FIXED,
+            2_000L,
+            10_000L,
+            EXPIRED_AT,
+            FIXED_POLICY
+        );
+
+        // assert
+        assertThat(couponTemplate.getTotalQuantity()).isNull();
+    }
+
+    @DisplayName("총 수량이 0 이하이면, BAD_REQUEST 예외를 던진다.")
+    @Test
+    void throwsBadRequest_whenTotalQuantityIsNotPositive() {
+        // arrange
+        Integer totalQuantity = 0;
+
+        // act & assert
+        assertThatThrownBy(() -> CouponTemplate.create(
+            COUPON_NAME,
+            CouponType.FIXED,
+            2_000L,
+            10_000L,
+            totalQuantity,
+            EXPIRED_AT,
+            FIXED_POLICY
+        ))
+            .isInstanceOf(CoreException.class)
+            .extracting("errorType")
+            .isEqualTo(ErrorType.BAD_REQUEST);
+    }
 }

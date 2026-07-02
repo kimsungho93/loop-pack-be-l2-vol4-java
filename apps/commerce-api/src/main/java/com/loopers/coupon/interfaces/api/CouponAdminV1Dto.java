@@ -29,11 +29,14 @@ public class CouponAdminV1Dto {
         @PositiveOrZero(message = "최소 주문 금액은 0 이상이어야 합니다.")
         Long minOrderAmount,
 
+        @Positive(message = "쿠폰 총 수량은 0보다 커야 합니다.")
+        Integer totalQuantity,
+
         @NotNull(message = "쿠폰 만료일은 비어있을 수 없습니다.")
         ZonedDateTime expiredAt
     ) {
         public CreateCouponCommand toCommand() {
-            return new CreateCouponCommand(name, type, value, minOrderAmount, expiredAt);
+            return new CreateCouponCommand(name, type, value, minOrderAmount, totalQuantity, expiredAt);
         }
     }
 
@@ -65,6 +68,8 @@ public class CouponAdminV1Dto {
         CouponType type,
         long discountValue,
         Long minimumOrderAmount,
+        Integer totalQuantity,
+        int issuedCount,
         ZonedDateTime expiredAt,
         ZonedDateTime createdAt,
         ZonedDateTime updatedAt,
@@ -77,6 +82,8 @@ public class CouponAdminV1Dto {
                 info.type(),
                 info.discountValue(),
                 info.minimumOrderAmount(),
+                info.totalQuantity(),
+                info.issuedCount(),
                 info.expiredAt(),
                 info.createdAt(),
                 info.updatedAt(),

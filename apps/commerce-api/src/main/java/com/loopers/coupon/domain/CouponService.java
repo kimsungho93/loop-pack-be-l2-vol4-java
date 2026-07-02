@@ -28,10 +28,11 @@ public class CouponService {
         CouponType type,
         long discountValue,
         Long minimumOrderAmount,
+        Integer totalQuantity,
         ZonedDateTime expiredAt
     ) {
         CouponDiscountPolicy policy = couponDiscountMethod.match(type);
-        CouponTemplate coupon = CouponTemplate.create(name, type, discountValue, minimumOrderAmount, expiredAt, policy);
+        CouponTemplate coupon = CouponTemplate.create(name, type, discountValue, minimumOrderAmount, totalQuantity, expiredAt, policy);
         return couponTemplateRepository.save(coupon);
     }
 

@@ -75,6 +75,7 @@ class CouponAdminV1ApiE2ETest {
                 CouponType.FIXED,
                 2_000L,
                 10_000L,
+                null,
                 EXPIRED_AT
             );
 
@@ -107,6 +108,7 @@ class CouponAdminV1ApiE2ETest {
                 CouponType.RATE,
                 10L,
                 10_000L,
+                null,
                 EXPIRED_AT
             );
 
@@ -130,6 +132,31 @@ class CouponAdminV1ApiE2ETest {
             );
         }
 
+        @DisplayName("총 수량을 지정해 생성하면, 201 CREATED와 한정 수량 쿠폰 정보를 반환한다.")
+        @Test
+        void returnsCreatedLimitedCoupon_whenTotalQuantityIsGiven() {
+            // arrange
+            CouponAdminV1Dto.CreateCouponRequest request = new CouponAdminV1Dto.CreateCouponRequest(
+                "1주년 2,000원 할인",
+                CouponType.FIXED,
+                2_000L,
+                10_000L,
+                100,
+                EXPIRED_AT
+            );
+
+            // act
+            ResponseEntity<ApiResponse<CouponAdminV1Dto.CouponResponse>> response = createCoupon(request, adminHeaders());
+
+            // assert
+            CouponAdminV1Dto.CouponResponse data = response.getBody().data();
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED),
+                () -> assertThat(data.totalQuantity()).isEqualTo(100),
+                () -> assertThat(data.issuedCount()).isZero()
+            );
+        }
+
         @DisplayName("어드민 헤더가 없으면, 401 UNAUTHORIZED 응답을 반환한다.")
         @Test
         void returnsUnauthorized_whenAdminHeaderIsMissing() {
@@ -139,6 +166,7 @@ class CouponAdminV1ApiE2ETest {
                 CouponType.FIXED,
                 2_000L,
                 10_000L,
+                null,
                 EXPIRED_AT
             );
 
@@ -163,6 +191,7 @@ class CouponAdminV1ApiE2ETest {
                 CouponType.FIXED,
                 2_000L,
                 10_000L,
+                null,
                 EXPIRED_AT
             );
             Long couponId = createCoupon(request, adminHeaders()).getBody().data().id();
@@ -213,10 +242,10 @@ class CouponAdminV1ApiE2ETest {
         void returnsCouponPage_whenAdminHeaderIsProvided() {
             // arrange
             createCoupon(new CouponAdminV1Dto.CreateCouponRequest(
-                "1주년 2,000원 할인", CouponType.FIXED, 2_000L, 10_000L, EXPIRED_AT
+                "1주년 2,000원 할인", CouponType.FIXED, 2_000L, 10_000L, null, EXPIRED_AT
             ), adminHeaders());
             createCoupon(new CouponAdminV1Dto.CreateCouponRequest(
-                "1주년 10% 할인", CouponType.RATE, 10L, 10_000L, EXPIRED_AT
+                "1주년 10% 할인", CouponType.RATE, 10L, 10_000L, null, EXPIRED_AT
             ), adminHeaders());
 
             // act
@@ -327,7 +356,7 @@ class CouponAdminV1ApiE2ETest {
         void updatesCoupon_whenAdminHeaderAndValidRequest() {
             // arrange
             Long couponId = createCoupon(new CouponAdminV1Dto.CreateCouponRequest(
-                "1주년 2,000원 할인", CouponType.FIXED, 2_000L, 10_000L, EXPIRED_AT
+                "1주년 2,000원 할인", CouponType.FIXED, 2_000L, 10_000L, null, EXPIRED_AT
             ), adminHeaders()).getBody().data().id();
             CouponAdminV1Dto.UpdateCouponRequest request = new CouponAdminV1Dto.UpdateCouponRequest(
                 "1주년 10% 할인", CouponType.RATE, 10L, 20_000L, EXPIRED_AT
