@@ -10,7 +10,8 @@ public record CatalogEventOutboxRelayProperties(
     @DefaultValue("1000") long relayDelayMs,
     @DefaultValue("100") int chunkSize,
     @DefaultValue("3") int maxRetryCount,
-    @DefaultValue("3s") Duration sendTimeout
+    @DefaultValue("3s") Duration sendTimeout,
+    @DefaultValue("catalog-events") String topicName
 ) {
 
     public CatalogEventOutboxRelayProperties {
@@ -25,6 +26,9 @@ public record CatalogEventOutboxRelayProperties(
         }
         if (sendTimeout == null || sendTimeout.isZero() || sendTimeout.isNegative()) {
             throw new IllegalArgumentException("sendTimeout must be positive.");
+        }
+        if (topicName == null || topicName.isBlank()) {
+            throw new IllegalArgumentException("topicName must not be blank.");
         }
     }
 }

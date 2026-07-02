@@ -23,7 +23,8 @@ class CatalogEventOutboxRelayPropertiesTest {
                 1_000L,
                 100,
                 3,
-                Duration.ofSeconds(3)
+                Duration.ofSeconds(3),
+                "catalog-events"
             );
 
             // assert
@@ -31,6 +32,7 @@ class CatalogEventOutboxRelayPropertiesTest {
             assertThat(properties.chunkSize()).isEqualTo(100);
             assertThat(properties.maxRetryCount()).isEqualTo(3);
             assertThat(properties.sendTimeout()).isEqualTo(Duration.ofSeconds(3));
+            assertThat(properties.topicName()).isEqualTo("catalog-events");
         }
 
         @DisplayName("relay 주기가 양수가 아니면 예외가 발생한다")
@@ -41,7 +43,8 @@ class CatalogEventOutboxRelayPropertiesTest {
                 0L,
                 100,
                 3,
-                Duration.ofSeconds(3)
+                Duration.ofSeconds(3),
+                "catalog-events"
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -53,7 +56,8 @@ class CatalogEventOutboxRelayPropertiesTest {
                 1_000L,
                 0,
                 3,
-                Duration.ofSeconds(3)
+                Duration.ofSeconds(3),
+                "catalog-events"
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -65,7 +69,8 @@ class CatalogEventOutboxRelayPropertiesTest {
                 1_000L,
                 100,
                 0,
-                Duration.ofSeconds(3)
+                Duration.ofSeconds(3),
+                "catalog-events"
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -77,7 +82,21 @@ class CatalogEventOutboxRelayPropertiesTest {
                 1_000L,
                 100,
                 3,
-                Duration.ZERO
+                Duration.ZERO,
+                "catalog-events"
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @DisplayName("topic name이 비어 있으면 예외가 발생한다")
+        @Test
+        void throwsException_whenTopicNameIsBlank() {
+            // act & assert
+            assertThatThrownBy(() -> new CatalogEventOutboxRelayProperties(
+                1_000L,
+                100,
+                3,
+                Duration.ofSeconds(3),
+                " "
             )).isInstanceOf(IllegalArgumentException.class);
         }
     }

@@ -21,6 +21,7 @@ spring:
     import:
       - jpa.yml
       - redis.yml
+      - kafka.yml
       - logging.yml
       - monitoring.yml
 
@@ -34,6 +35,13 @@ commerce:
     sync-fixed-delay-ms: 5000
     sync-chunk-size: 1000
     sync-max-chunks-per-run: 3
+  catalog-event-outbox:
+    relay-enabled: true
+    relay-delay-ms: 1000
+    chunk-size: 100
+    max-retry-count: 3
+    send-timeout: 3s
+    topic-name: catalog-events
   product-detail-cache:
     ttl-seconds: 30
     jitter-seconds: 5
@@ -102,6 +110,8 @@ spring:
 commerce:
   product-like-summary:
     sync-enabled: false
+  catalog-event-outbox:
+    relay-enabled: false
   payment:
     recovery:
       enabled: false
