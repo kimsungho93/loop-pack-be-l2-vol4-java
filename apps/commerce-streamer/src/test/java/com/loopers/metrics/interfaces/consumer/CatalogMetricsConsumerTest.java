@@ -17,9 +17,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.kafka.listener.BatchListenerFailedException;
 import org.springframework.kafka.support.Acknowledgment;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.ZonedDateTime;
 import java.util.List;
 
@@ -94,9 +96,28 @@ class CatalogMetricsConsumerTest {
 
             // act & assert
             assertThatThrownBy(() -> consumer.consume(List.of(record), acknowledgment))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessage("db unavailable");
+                .isInstanceOf(BatchListenerFailedException.class)
+                .hasCauseInstanceOf(RuntimeException.class)
+                .hasRootCauseMessage("db unavailable");
 
+            verify(acknowledgment, never()).acknowledge();
+        }
+
+        @DisplayName("배치 중간의 이벤트를 읽을 수 없으면 실패한 레코드 index를 전달한다.")
+        @Test
+        void throwsBatchListenerFailedException_whenRecordCannotBeRead() throws IOException {
+            // arrange
+            ConsumerRecord<String, byte[]> first = record(event("event-1"), 1, 20L);
+            ConsumerRecord<String, byte[]> second = invalidRecord(1, 21L);
+
+            // act & assert
+            assertThatThrownBy(() -> consumer.consume(List.of(first, second), acknowledgment))
+                .isInstanceOfSatisfying(BatchListenerFailedException.class, exception ->
+                    assertThat(exception.getIndex()).isEqualTo(1)
+                )
+                .hasCauseInstanceOf(IllegalArgumentException.class);
+
+            verify(productMetricEventHandler).handle(any(CatalogEventEnvelope.class), any(EventHandlingMetadata.class));
             verify(acknowledgment, never()).acknowledge();
         }
     }
@@ -107,6 +128,13 @@ class CatalogMetricsConsumerTest {
         long offset
     ) throws IOException {
         return new ConsumerRecord<>("catalog-events", partition, offset, "101", objectMapper.writeValueAsBytes(event));
+    }
+
+    private ConsumerRecord<String, byte[]> invalidRecord(
+        int partition,
+        long offset
+    ) {
+        return new ConsumerRecord<>("catalog-events", partition, offset, "101", "{invalid-json".getBytes(StandardCharsets.UTF_8));
     }
 
     private CatalogEventEnvelope event(String eventId) {

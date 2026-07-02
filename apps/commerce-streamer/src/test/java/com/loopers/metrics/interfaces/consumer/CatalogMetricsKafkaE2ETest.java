@@ -5,6 +5,12 @@ import com.loopers.metrics.application.CatalogEventPayload;
 import com.loopers.metrics.application.CatalogEventType;
 import com.loopers.utils.DatabaseCleanUp;
 import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,7 +30,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,8 +52,10 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 class CatalogMetricsKafkaE2ETest {
 
     private static final String TOPIC = "catalog-events";
+    private static final String DLT_TOPIC = TOPIC + ".DLT";
     private static final Long PRODUCT_ID = 101L;
     private static final Long USER_ID = 1L;
+    private static final long DLT_AWAIT_SECONDS = 40;
     private static final ZonedDateTime OCCURRED_AT = ZonedDateTime.parse("2026-07-02T10:00:00+09:00");
 
     @Container
@@ -97,11 +111,71 @@ class CatalogMetricsKafkaE2ETest {
         );
     }
 
+    @DisplayName("처리할 수 없는 catalog 이벤트는 재시도 후 DLT로 격리한다.")
+    @Test
+    void sendsInvalidCatalogEventToDlt() throws Exception {
+        // arrange
+        byte[] invalidPayload = "{invalid-json".getBytes(StandardCharsets.UTF_8);
+
+        // act
+        sendRaw(PRODUCT_ID.toString(), invalidPayload);
+
+        // assert
+        ConsumerRecord<String, byte[]> dltRecord = awaitDltRecord(invalidPayload);
+        assertAll(
+            () -> assertThat(dltRecord.key()).isEqualTo(PRODUCT_ID.toString()),
+            () -> assertThat(dltRecord.value()).containsExactly(invalidPayload),
+            () -> assertThat(dltRecord.topic()).isEqualTo(DLT_TOPIC),
+            () -> assertThat(findMetric(PRODUCT_ID)).isNull(),
+            () -> assertThat(handledEventCount()).isZero()
+        );
+    }
+
     private SendResult<Object, Object> send(CatalogEventEnvelope event) throws Exception {
         SendResult<Object, Object> result = kafkaTemplate.send(TOPIC, PRODUCT_ID.toString(), event)
             .get(10, TimeUnit.SECONDS);
         kafkaTemplate.flush();
         return result;
+    }
+
+    private void sendRaw(String key, byte[] value) throws Exception {
+        try (KafkaProducer<String, byte[]> producer = new KafkaProducer<>(rawProducerProperties())) {
+            producer.send(new ProducerRecord<>(TOPIC, key, value)).get(10, TimeUnit.SECONDS);
+            producer.flush();
+        }
+    }
+
+    private ConsumerRecord<String, byte[]> awaitDltRecord(byte[] expectedPayload) {
+        try (KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(dltConsumerProperties())) {
+            consumer.subscribe(List.of(DLT_TOPIC));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(DLT_AWAIT_SECONDS);
+            while (System.nanoTime() < deadline) {
+                for (ConsumerRecord<String, byte[]> record : consumer.poll(Duration.ofMillis(200))) {
+                    if (Arrays.equals(record.value(), expectedPayload)) {
+                        return record;
+                    }
+                }
+            }
+        }
+        throw new AssertionError("DLT record was not published.");
+    }
+
+    private Map<String, Object> rawProducerProperties() {
+        return Map.of(
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers(),
+            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringSerializer",
+            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer"
+        );
+    }
+
+    private Map<String, Object> dltConsumerProperties() {
+        return Map.of(
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers(),
+            ConsumerConfig.GROUP_ID_CONFIG, "catalog-dlt-reader-" + UUID.randomUUID(),
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest",
+            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer",
+            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArrayDeserializer"
+        );
     }
 
     private ProductMetricRow awaitMetric(Long productId, long likeCount, long viewCount) throws InterruptedException {
@@ -164,6 +238,14 @@ class CatalogMetricsKafkaE2ETest {
         @Bean
         NewTopic catalogEventsTopic() {
             return TopicBuilder.name(TOPIC)
+                .partitions(3)
+                .replicas(1)
+                .build();
+        }
+
+        @Bean
+        NewTopic catalogEventsDltTopic() {
+            return TopicBuilder.name(DLT_TOPIC)
                 .partitions(3)
                 .replicas(1)
                 .build();
