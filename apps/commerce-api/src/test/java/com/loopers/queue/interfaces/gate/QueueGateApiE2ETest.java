@@ -1,9 +1,14 @@
 package com.loopers.queue.interfaces.gate;
 
+import com.loopers.brand.domain.Brand;
+import com.loopers.brand.domain.BrandService;
+import com.loopers.product.domain.Product;
+import com.loopers.product.domain.ProductService;
 import com.loopers.queue.application.QueueAdmitter;
 import com.loopers.queue.application.QueueFacade;
 import com.loopers.queue.domain.QueueEntryStatus;
 import com.loopers.shared.presentation.ApiResponse;
+import com.loopers.stock.domain.ProductStockService;
 import com.loopers.user.domain.User;
 import com.loopers.user.domain.UserRepository;
 import com.loopers.user.domain.vo.LoginId;
@@ -49,6 +54,9 @@ class QueueGateApiE2ETest {
     private final UserRepository userRepository;
     private final DatabaseCleanUp databaseCleanUp;
     private final RedisCleanUp redisCleanUp;
+    private final BrandService brandService;
+    private final ProductService productService;
+    private final ProductStockService productStockService;
 
     @Autowired
     QueueGateApiE2ETest(
@@ -57,7 +65,10 @@ class QueueGateApiE2ETest {
         QueueAdmitter queueAdmitter,
         UserRepository userRepository,
         DatabaseCleanUp databaseCleanUp,
-        RedisCleanUp redisCleanUp
+        RedisCleanUp redisCleanUp,
+        BrandService brandService,
+        ProductService productService,
+        ProductStockService productStockService
     ) {
         this.testRestTemplate = testRestTemplate;
         this.queueFacade = queueFacade;
@@ -65,6 +76,9 @@ class QueueGateApiE2ETest {
         this.userRepository = userRepository;
         this.databaseCleanUp = databaseCleanUp;
         this.redisCleanUp = redisCleanUp;
+        this.brandService = brandService;
+        this.productService = productService;
+        this.productStockService = productStockService;
     }
 
     @AfterEach
@@ -106,21 +120,47 @@ class QueueGateApiE2ETest {
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         }
 
-        @DisplayName("한 번 사용한 토큰으로 다시 주문하면, 429 TOO_MANY_REQUESTS를 반환한다.")
+        @DisplayName("주문 성공 후 같은 토큰으로 다시 주문하면, 409 CONFLICT 를 반환한다.")
         @Test
-        void returnsTooManyRequests_whenTokenIsReused() {
+        void returnsConflict_whenTokenIsReusedAfterSuccessfulOrder() {
             // arrange
+            signUpUser(LOGIN_ID);
+            Brand brand = brandService.createBrand("애플", "기술과 디자인으로 일상을 새롭게 만드는 브랜드");
+            Product product = productService.createProduct(brand.getId(), "아이폰 16 Pro", "강력한 성능과 정교한 카메라 경험을 제공하는 스마트폰", 1_550_000L);
+            productStockService.createProductStock(product.getId(), 10);
+            String token = admittedToken(LOGIN_ID);
+            HttpHeaders headers = authHeaders(LOGIN_ID);
+            headers.set(QueueGateInterceptor.QUEUE_TOKEN_HEADER, token);
+            ResponseEntity<ApiResponse<Object>> first = createOrder(orderRequestBody(product.getId()), headers);
+
+            // act
+            ResponseEntity<ApiResponse<Object>> response = createOrder(orderRequestBody(product.getId()), headers);
+
+            // assert
+            assertAll(
+                () -> assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED),
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT)
+            );
+        }
+
+        @DisplayName("주문이 실패하면 토큰이 복구되어, 같은 토큰으로 다시 시도할 수 있다.")
+        @Test
+        void restoresToken_whenOrderFails() {
+            // arrange — 빈 본문이라 게이트 통과 후 주문이 400 으로 실패한다.
             signUpUser(LOGIN_ID);
             String token = admittedToken(LOGIN_ID);
             HttpHeaders headers = authHeaders(LOGIN_ID);
             headers.set(QueueGateInterceptor.QUEUE_TOKEN_HEADER, token);
-            createOrder(headers);
+            ResponseEntity<ApiResponse<Object>> first = createOrder(headers);
 
-            // act
+            // act — 토큰이 복구됐다면 429 가 아니라 다시 400 이 난다.
             ResponseEntity<ApiResponse<Object>> response = createOrder(headers);
 
             // assert
-            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+            assertAll(
+                () -> assertThat(first.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST),
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST)
+            );
         }
 
         @DisplayName("주문 조회는 토큰 없이도 게이트를 통과한다.")
@@ -156,6 +196,16 @@ class QueueGateApiE2ETest {
         headers.setContentType(MediaType.APPLICATION_JSON);
         ParameterizedTypeReference<ApiResponse<Object>> responseType = new ParameterizedTypeReference<>() {};
         return testRestTemplate.exchange(ENDPOINT_ORDERS, HttpMethod.POST, new HttpEntity<>("{}", headers), responseType);
+    }
+
+    private ResponseEntity<ApiResponse<Object>> createOrder(String body, HttpHeaders headers) {
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ParameterizedTypeReference<ApiResponse<Object>> responseType = new ParameterizedTypeReference<>() {};
+        return testRestTemplate.exchange(ENDPOINT_ORDERS, HttpMethod.POST, new HttpEntity<>(body, headers), responseType);
+    }
+
+    private String orderRequestBody(Long productId) {
+        return "{\"items\":[{\"productId\":%d,\"quantity\":1}]}".formatted(productId);
     }
 
     private void signUpUser(String loginId) {

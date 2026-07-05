@@ -10,6 +10,7 @@ public class QueueMetrics {
 
     private final Counter admittedCounter;
     private final Counter tokenConsumedCounter;
+    private final Counter tokenRestoredCounter;
 
     public QueueMetrics(MeterRegistry meterRegistry, WaitingQueue waitingQueue) {
         Gauge.builder("queue.waiting.depth", waitingQueue, WaitingQueue::countWaiting)
@@ -21,6 +22,9 @@ public class QueueMetrics {
         this.tokenConsumedCounter = Counter.builder("queue.token.consumed.total")
             .description("주문에 사용된 입장 토큰 누적 수")
             .register(meterRegistry);
+        this.tokenRestoredCounter = Counter.builder("queue.token.restored.total")
+            .description("주문 실패로 복구된 입장 토큰 누적 수")
+            .register(meterRegistry);
     }
 
     public void recordAdmitted(int admitted) {
@@ -29,5 +33,9 @@ public class QueueMetrics {
 
     public void recordTokenConsumed() {
         tokenConsumedCounter.increment();
+    }
+
+    public void recordTokenRestored() {
+        tokenRestoredCounter.increment();
     }
 }
