@@ -47,6 +47,10 @@ commerce:
     send-timeout: 3s
     group-id: coupon-issue-worker
     auto-startup: true
+  queue:
+    admit-fixed-delay-ms: 100
+    admit-batch-size: 10
+    token-ttl: 5m
   product-detail-cache:
     ttl-seconds: 30
     jitter-seconds: 5
@@ -119,6 +123,9 @@ commerce:
     relay-enabled: false
   coupon-issue:
     auto-startup: false
+  queue:
+    admit-enabled: false
+    order-gate-enabled: false
   payment:
     recovery:
       enabled: false
