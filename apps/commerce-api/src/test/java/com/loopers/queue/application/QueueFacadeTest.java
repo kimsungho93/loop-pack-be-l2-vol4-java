@@ -89,12 +89,28 @@ class QueueFacadeTest {
             // arrange
             when(waitingQueue.findRank(101L)).thenReturn(Optional.empty());
             when(waitingQueue.findToken(101L)).thenReturn(Optional.empty());
+            when(waitingQueue.isTokenUsed(101L)).thenReturn(false);
 
             // act
             QueuePositionInfo info = queueFacade.getPosition(101L);
 
             // assert
             assertThat(info.status()).isEqualTo(QueueEntryStatus.EXPIRED);
+        }
+
+        @DisplayName("줄에 없고 토큰이 사용된 상태면, COMPLETED 상태를 반환한다.")
+        @Test
+        void returnsCompleted_whenTokenWasUsed() {
+            // arrange
+            when(waitingQueue.findRank(101L)).thenReturn(Optional.empty());
+            when(waitingQueue.findToken(101L)).thenReturn(Optional.empty());
+            when(waitingQueue.isTokenUsed(101L)).thenReturn(true);
+
+            // act
+            QueuePositionInfo info = queueFacade.getPosition(101L);
+
+            // assert
+            assertThat(info.status()).isEqualTo(QueueEntryStatus.COMPLETED);
         }
     }
 }

@@ -19,6 +19,10 @@ public record QueuePositionInfo(
         return new QueuePositionInfo(QueueEntryStatus.READY, null, null, null, token);
     }
 
+    public static QueuePositionInfo completed() {
+        return new QueuePositionInfo(QueueEntryStatus.COMPLETED, null, null, null, null);
+    }
+
     public static QueuePositionInfo expired() {
         return new QueuePositionInfo(QueueEntryStatus.EXPIRED, null, null, null, null);
     }

@@ -20,6 +20,8 @@ public class QueueFacade {
             .map(rank -> QueuePositionInfo.waiting(rank + 1, waitingQueue.countWaiting(), queueProperties.permitsPerSecond()))
             .orElseGet(() -> waitingQueue.findToken(userId)
                 .map(QueuePositionInfo::ready)
-                .orElseGet(QueuePositionInfo::expired));
+                .orElseGet(() -> waitingQueue.isTokenUsed(userId)
+                    ? QueuePositionInfo.completed()
+                    : QueuePositionInfo.expired()));
     }
 }
