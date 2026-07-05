@@ -2,6 +2,7 @@ package com.loopers.queue.infrastructure;
 
 import com.loopers.config.redis.RedisConfig;
 import com.loopers.queue.application.QueueEnterResult;
+import com.loopers.queue.application.TokenConsumeResult;
 import com.loopers.queue.application.WaitingQueue;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -18,6 +19,7 @@ public class RedisWaitingQueue implements WaitingQueue {
 
     private static final String WAITING_KEY = "queue:waiting";
     private static final String TOKEN_KEY_PREFIX = "queue:entry-token:";
+    private static final String USED_MARKER = "USED";
 
     // 줄 세우기와 순번 조회를 원자적으로 묶는다. ZADD 와 ZRANK 사이에 입장 배치(ZPOPMIN)가
     // 끼어들면 방금 세운 사용자의 rank 가 nil 이 되므로 개별 명령으로 나누면 안 된다.
@@ -45,11 +47,17 @@ public class RedisWaitingQueue implements WaitingQueue {
         return admitted
         """, Long.class);
 
-    // 토큰 값 확인과 삭제를 원자적으로 묶어 같은 토큰의 중복 소비를 막는다.
+    // 토큰 확인과 상태 전이를 원자적으로 묶는다. 삭제 대신 'USED' 마커를 남겨
+    // "성공 후 재시도"(ALREADY_USED)와 "무효 토큰"(INVALID)을 구분한다.
+    // ARGV[1]=토큰 값, ARGV[2]=마커 TTL(ms)
     private static final RedisScript<Long> CONSUME_TOKEN_SCRIPT = RedisScript.of("""
-        if redis.call('GET', KEYS[1]) == ARGV[1] then
-            redis.call('DEL', KEYS[1])
+        local value = redis.call('GET', KEYS[1])
+        if value == ARGV[1] then
+            redis.call('SET', KEYS[1], 'USED', 'PX', ARGV[2])
             return 1
+        end
+        if value == 'USED' then
+            return 2
         end
         return 0
         """, Long.class);
@@ -100,13 +108,30 @@ public class RedisWaitingQueue implements WaitingQueue {
 
     @Override
     public Optional<String> findToken(long userId) {
-        return Optional.ofNullable(redisTemplate.opsForValue().get(tokenKey(userId)));
+        return Optional.ofNullable(redisTemplate.opsForValue().get(tokenKey(userId)))
+            .filter(value -> !USED_MARKER.equals(value));
     }
 
     @Override
-    public boolean consumeToken(long userId, String token) {
-        Long consumed = masterRedisTemplate.execute(CONSUME_TOKEN_SCRIPT, List.of(tokenKey(userId)), token);
-        return consumed != null && consumed == 1L;
+    public TokenConsumeResult consumeToken(long userId, String token, Duration usedMarkerTtl) {
+        Long result = masterRedisTemplate.execute(
+            CONSUME_TOKEN_SCRIPT,
+            List.of(tokenKey(userId)),
+            token,
+            String.valueOf(usedMarkerTtl.toMillis())
+        );
+        if (result != null && result == 1L) {
+            return TokenConsumeResult.CONSUMED;
+        }
+        if (result != null && result == 2L) {
+            return TokenConsumeResult.ALREADY_USED;
+        }
+        return TokenConsumeResult.INVALID;
+    }
+
+    @Override
+    public boolean isTokenUsed(long userId) {
+        return USED_MARKER.equals(redisTemplate.opsForValue().get(tokenKey(userId)));
     }
 
     private String tokenKey(long userId) {

@@ -1,6 +1,7 @@
 package com.loopers.queue.infrastructure;
 
 import com.loopers.queue.application.QueueEnterResult;
+import com.loopers.queue.application.TokenConsumeResult;
 import com.loopers.queue.application.WaitingQueue;
 import com.loopers.utils.RedisCleanUp;
 import org.junit.jupiter.api.AfterEach;
@@ -235,63 +236,91 @@ class RedisWaitingQueueIntegrationTest {
 
         private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
 
-        @DisplayName("유효한 토큰이면, 소비하고 무효화한다.")
+        @DisplayName("유효한 토큰이면, 소비하고 사용됨 마커로 바꾼다.")
         @Test
-        void consumesAndInvalidatesToken_whenTokenIsValid() {
+        void consumesTokenAndMarksUsed_whenTokenIsValid() {
             // arrange
             waitingQueue.enter(101L, 1_000L);
             waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
 
             // act
-            boolean consumed = waitingQueue.consumeToken(101L, "token-a");
+            TokenConsumeResult result = waitingQueue.consumeToken(101L, "token-a", TOKEN_TTL);
 
-            // assert
+            // assert — findToken 은 마커를 토큰으로 노출하지 않는다.
             assertAll(
-                () -> assertThat(consumed).isTrue(),
-                () -> assertThat(waitingQueue.findToken(101L)).isEmpty()
+                () -> assertThat(result).isEqualTo(TokenConsumeResult.CONSUMED),
+                () -> assertThat(waitingQueue.findToken(101L)).isEmpty(),
+                () -> assertThat(waitingQueue.isTokenUsed(101L)).isTrue()
             );
         }
 
-        @DisplayName("이미 소비한 토큰을 다시 소비하면, 거절한다.")
+        @DisplayName("이미 소비한 토큰을 다시 소비하면, ALREADY_USED 를 반환한다.")
         @Test
-        void rejects_whenTokenAlreadyConsumed() {
+        void returnsAlreadyUsed_whenTokenAlreadyConsumed() {
             // arrange
             waitingQueue.enter(101L, 1_000L);
             waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
-            waitingQueue.consumeToken(101L, "token-a");
+            waitingQueue.consumeToken(101L, "token-a", TOKEN_TTL);
 
             // act
-            boolean consumed = waitingQueue.consumeToken(101L, "token-a");
+            TokenConsumeResult result = waitingQueue.consumeToken(101L, "token-a", TOKEN_TTL);
 
             // assert
-            assertThat(consumed).isFalse();
+            assertThat(result).isEqualTo(TokenConsumeResult.ALREADY_USED);
         }
 
-        @DisplayName("토큰 값이 다르면, 거절하고 기존 토큰은 유지한다.")
+        @DisplayName("토큰 값이 다르면, INVALID 를 반환하고 기존 토큰은 유지한다.")
         @Test
-        void rejectsAndKeepsToken_whenTokenDoesNotMatch() {
+        void returnsInvalidAndKeepsToken_whenTokenDoesNotMatch() {
             // arrange
             waitingQueue.enter(101L, 1_000L);
             waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
 
             // act
-            boolean consumed = waitingQueue.consumeToken(101L, "wrong-token");
+            TokenConsumeResult result = waitingQueue.consumeToken(101L, "wrong-token", TOKEN_TTL);
 
             // assert
             assertAll(
-                () -> assertThat(consumed).isFalse(),
+                () -> assertThat(result).isEqualTo(TokenConsumeResult.INVALID),
                 () -> assertThat(waitingQueue.findToken(101L)).contains("token-a")
             );
         }
 
-        @DisplayName("발급된 토큰이 없으면, 거절한다.")
+        @DisplayName("발급된 토큰이 없으면, INVALID 를 반환한다.")
         @Test
-        void rejects_whenTokenDoesNotExist() {
+        void returnsInvalid_whenTokenDoesNotExist() {
             // act
-            boolean consumed = waitingQueue.consumeToken(999L, "token-a");
+            TokenConsumeResult result = waitingQueue.consumeToken(999L, "token-a", TOKEN_TTL);
 
             // assert
-            assertThat(consumed).isFalse();
+            assertThat(result).isEqualTo(TokenConsumeResult.INVALID);
+        }
+
+        @DisplayName("사용됨 마커의 TTL 이 지나면, 재소비는 ALREADY_USED 가 아니라 INVALID 다.")
+        @Test
+        void returnsInvalid_whenUsedMarkerExpired() throws InterruptedException {
+            // arrange — 마커 TTL 을 짧게 줘서 만료를 재현한다.
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
+            waitingQueue.consumeToken(101L, "token-a", Duration.ofMillis(100));
+
+            // act
+            Thread.sleep(300);
+            TokenConsumeResult result = waitingQueue.consumeToken(101L, "token-a", TOKEN_TTL);
+
+            // assert
+            assertThat(result).isEqualTo(TokenConsumeResult.INVALID);
+        }
+
+        @DisplayName("발급만 되고 소비되지 않은 토큰은, 사용됨 상태가 아니다.")
+        @Test
+        void isTokenUsedReturnsFalse_whenTokenIsIssuedButNotConsumed() {
+            // arrange
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
+
+            // act & assert
+            assertThat(waitingQueue.isTokenUsed(101L)).isFalse();
         }
     }
 

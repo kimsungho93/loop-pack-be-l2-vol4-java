@@ -21,5 +21,12 @@ public interface WaitingQueue {
 
     Optional<String> findToken(long userId);
 
-    boolean consumeToken(long userId, String token);
+    /**
+     * 토큰 값이 일치하면 소비하고 사용됨 마커(TTL {@code usedMarkerTtl})로 바꾼다.
+     * 마커가 남아 있는 동안의 재소비는 {@link TokenConsumeResult#ALREADY_USED} 로 구분된다.
+     */
+    TokenConsumeResult consumeToken(long userId, String token, Duration usedMarkerTtl);
+
+    /** 토큰이 소비되어 사용됨 마커 상태인지 확인한다. */
+    boolean isTokenUsed(long userId);
 }
