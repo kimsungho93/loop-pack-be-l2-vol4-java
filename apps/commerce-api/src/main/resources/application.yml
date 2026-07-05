@@ -49,7 +49,7 @@ commerce:
     auto-startup: true
   queue:
     admit-fixed-delay-ms: 100
-    admit-batch-size: 10
+    admit-batch-size: 5
     token-ttl: 5m
   product-detail-cache:
     ttl-seconds: 30

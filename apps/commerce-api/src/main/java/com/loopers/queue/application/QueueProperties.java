@@ -6,15 +6,16 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 import java.time.Duration;
 
 /**
- * 입장 속도(100ms 간격 × 10명 = 초당 100명) 산정 근거:
- * - 주문 API 의 동시 처리 상한은 DB 커넥션 풀 40개가 결정한다(jpa.yml, test 프로필만 10개).
- * - 평균 주문 처리 시간을 50ms 로 가정하면(실측값 아님 — 부하 테스트로 보정 필요) 이론 처리량은 40 ÷ 0.05s = 초당 800건.
- * - 커넥션 풀은 주문 외 모든 API 가 공유하므로 대기열 입장에는 이론치의 약 1/8 만 배정해 초당 100명으로 잡았다.
- * - 최악의 동시 유효 토큰 수 = 초당 입장 인원(100) × 토큰 TTL(300s) = 30,000개.
+ * 입장 속도(100ms 간격 × 5명 = 초당 50명) 산정 근거 — 2026-07-05 로컬 부하 실측 기반:
+ * - POST /api/v1/orders 실측: 순차 평균 80ms(요청당 BCrypt 인증 ~72ms + 주문 트랜잭션 ~8ms),
+ *   동시 40 스레드에서 처리량 95 req/s 로 포화(에러 0건).
+ * - 병목은 DB 커넥션 풀(40개, 평균 점유 1개 미만)이 아니라 요청마다 수행하는 BCrypt 인증의 CPU 비용이다.
+ * - 실측 포화 처리량 95 req/s 에 안전마진 50%를 적용해 초당 50명 → 100ms 간격 × 5명.
+ * - 최악의 동시 유효 토큰 수 = 초당 입장 인원(50) × 토큰 TTL(300s) = 15,000개.
  */
 @ConfigurationProperties("commerce.queue")
 public record QueueProperties(
-    @DefaultValue("10") int admitBatchSize,
+    @DefaultValue("5") int admitBatchSize,
     @DefaultValue("100") long admitFixedDelayMs,
     @DefaultValue("5m") Duration tokenTtl
 ) {
