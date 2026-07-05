@@ -29,4 +29,12 @@ public interface WaitingQueue {
 
     /** 토큰이 소비되어 사용됨 마커 상태인지 확인한다. */
     boolean isTokenUsed(long userId);
+
+    /**
+     * 사용됨 마커 상태의 토큰을 원래 값으로 되돌린다 (주문 실패 시 차례 보존).
+     * 마커가 이미 만료됐으면 부활시키지 않는다.
+     *
+     * @return 실제로 복구했으면 true
+     */
+    boolean restoreToken(long userId, String token, Duration tokenTtl);
 }

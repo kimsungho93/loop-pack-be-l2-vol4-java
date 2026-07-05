@@ -399,4 +399,67 @@ class RedisWaitingQueueIntegrationTest {
             );
         }
     }
+
+    @DisplayName("입장 토큰을 복구할 때 ")
+    @Nested
+    class RestoreToken {
+
+        private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
+
+        @DisplayName("소비된 토큰을 복구하면, 같은 토큰을 다시 소비할 수 있다.")
+        @Test
+        void allowsReconsume_whenConsumedTokenIsRestored() {
+            // arrange
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
+            waitingQueue.consumeToken(101L, "token-a", TOKEN_TTL);
+
+            // act
+            boolean restored = waitingQueue.restoreToken(101L, "token-a", TOKEN_TTL);
+
+            // assert
+            assertAll(
+                () -> assertThat(restored).isTrue(),
+                () -> assertThat(waitingQueue.findToken(101L)).contains("token-a"),
+                () -> assertThat(waitingQueue.consumeToken(101L, "token-a", TOKEN_TTL))
+                    .isEqualTo(TokenConsumeResult.CONSUMED)
+            );
+        }
+
+        @DisplayName("소비되지 않은 토큰은, 복구하지 않고 기존 토큰을 유지한다.")
+        @Test
+        void doesNotRestore_whenTokenIsNotConsumed() {
+            // arrange
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
+
+            // act
+            boolean restored = waitingQueue.restoreToken(101L, "token-a", TOKEN_TTL);
+
+            // assert
+            assertAll(
+                () -> assertThat(restored).isFalse(),
+                () -> assertThat(waitingQueue.findToken(101L)).contains("token-a")
+            );
+        }
+
+        @DisplayName("사용됨 마커가 만료된 뒤에는, 토큰을 부활시키지 않는다.")
+        @Test
+        void doesNotResurrectToken_whenUsedMarkerExpired() throws InterruptedException {
+            // arrange
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
+            waitingQueue.consumeToken(101L, "token-a", Duration.ofMillis(100));
+
+            // act
+            Thread.sleep(300);
+            boolean restored = waitingQueue.restoreToken(101L, "token-a", TOKEN_TTL);
+
+            // assert
+            assertAll(
+                () -> assertThat(restored).isFalse(),
+                () -> assertThat(waitingQueue.findToken(101L)).isEmpty()
+            );
+        }
+    }
 }

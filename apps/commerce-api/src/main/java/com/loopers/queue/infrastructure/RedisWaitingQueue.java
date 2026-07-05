@@ -62,6 +62,17 @@ public class RedisWaitingQueue implements WaitingQueue {
         return 0
         """, Long.class);
 
+    // 실패한 주문의 토큰을 되돌린다. 마커가 만료된 뒤 SET 하면 토큰이 부활하므로
+    // 'USED' 상태일 때만 복구하는 가드를 스크립트 안에 둔다.
+    // ARGV[1]=토큰 값, ARGV[2]=토큰 TTL(ms)
+    private static final RedisScript<Long> RESTORE_TOKEN_SCRIPT = RedisScript.of("""
+        if redis.call('GET', KEYS[1]) == 'USED' then
+            redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+            return 1
+        end
+        return 0
+        """, Long.class);
+
     private final RedisTemplate<String, String> redisTemplate;
     private final RedisTemplate<String, String> masterRedisTemplate;
 
@@ -132,6 +143,17 @@ public class RedisWaitingQueue implements WaitingQueue {
     @Override
     public boolean isTokenUsed(long userId) {
         return USED_MARKER.equals(redisTemplate.opsForValue().get(tokenKey(userId)));
+    }
+
+    @Override
+    public boolean restoreToken(long userId, String token, Duration tokenTtl) {
+        Long restored = masterRedisTemplate.execute(
+            RESTORE_TOKEN_SCRIPT,
+            List.of(tokenKey(userId)),
+            token,
+            String.valueOf(tokenTtl.toMillis())
+        );
+        return restored != null && restored == 1L;
     }
 
     private String tokenKey(long userId) {
