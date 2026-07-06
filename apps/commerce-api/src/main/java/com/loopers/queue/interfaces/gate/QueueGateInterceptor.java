@@ -9,7 +9,6 @@ import com.loopers.shared.error.ErrorType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -57,7 +56,7 @@ public class QueueGateInterceptor implements HandlerInterceptor {
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         Object token = request.getAttribute(CONSUMED_TOKEN_ATTRIBUTE);
         Object userId = request.getAttribute(CONSUMED_USER_ATTRIBUTE);
-        if (token == null || userId == null || HttpStatus.valueOf(response.getStatus()).is2xxSuccessful()) {
+        if (token == null || userId == null || response.getStatus() / 100 == 2) {
             return;
         }
         if (waitingQueue.restoreToken((Long) userId, (String) token, queueProperties.tokenTtl())) {

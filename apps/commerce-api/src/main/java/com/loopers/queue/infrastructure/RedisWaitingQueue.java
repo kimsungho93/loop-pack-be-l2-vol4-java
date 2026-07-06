@@ -19,7 +19,9 @@ public class RedisWaitingQueue implements WaitingQueue {
 
     private static final String WAITING_KEY = "queue:waiting";
     private static final String TOKEN_KEY_PREFIX = "queue:entry-token:";
-    private static final String USED_MARKER = "USED";
+    // 소비된 토큰 자리에 남기는 sentinel. 'USED:{원본 토큰}' 형태로 출처를 남겨
+    // 다른 소비의 마커를 복구하는 것(유령 복구)을 막는다. 토큰 값은 UUID 형식이라 충돌하지 않는다.
+    private static final String USED_MARKER_PREFIX = "USED:";
 
     // 줄 세우기와 순번 조회를 원자적으로 묶는다. ZADD 와 ZRANK 사이에 입장 배치(ZPOPMIN)가
     // 끼어들면 방금 세운 사용자의 rank 가 nil 이 되므로 개별 명령으로 나누면 안 된다.
@@ -47,26 +49,28 @@ public class RedisWaitingQueue implements WaitingQueue {
         return admitted
         """, Long.class);
 
-    // 토큰 확인과 상태 전이를 원자적으로 묶는다. 삭제 대신 'USED' 마커를 남겨
-    // "성공 후 재시도"(ALREADY_USED)와 "무효 토큰"(INVALID)을 구분한다.
+    // 토큰 확인과 상태 전이를 원자적으로 묶는다. 삭제 대신 'USED:{토큰}' 마커를 남겨
+    // "성공 후 재시도"(ALREADY_USED)와 "무효 토큰"(INVALID)을 구분하고, 마커에 소비한
+    // 토큰의 출처를 남겨 다른 소비의 마커를 복구하는 유령 복구를 막는다.
     // ARGV[1]=토큰 값, ARGV[2]=마커 TTL(ms)
+    // value ~= false 가드: Redis GET은 키가 없으면 false 를 반환하는데, string.sub(false, ...)는 에러를 던진다.
     private static final RedisScript<Long> CONSUME_TOKEN_SCRIPT = RedisScript.of("""
         local value = redis.call('GET', KEYS[1])
         if value == ARGV[1] then
-            redis.call('SET', KEYS[1], 'USED', 'PX', ARGV[2])
+            redis.call('SET', KEYS[1], 'USED:' .. ARGV[1], 'PX', ARGV[2])
             return 1
         end
-        if value == 'USED' then
+        if value ~= false and string.sub(value, 1, 5) == 'USED:' then
             return 2
         end
         return 0
         """, Long.class);
 
     // 실패한 주문의 토큰을 되돌린다. 마커가 만료된 뒤 SET 하면 토큰이 부활하므로
-    // 'USED' 상태일 때만 복구하는 가드를 스크립트 안에 둔다.
+    // 자기 토큰의 마커일 때만 복구하는 가드를 스크립트 안에 둔다.
     // ARGV[1]=토큰 값, ARGV[2]=토큰 TTL(ms)
     private static final RedisScript<Long> RESTORE_TOKEN_SCRIPT = RedisScript.of("""
-        if redis.call('GET', KEYS[1]) == 'USED' then
+        if redis.call('GET', KEYS[1]) == 'USED:' .. ARGV[1] then
             redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
             return 1
         end
@@ -120,7 +124,7 @@ public class RedisWaitingQueue implements WaitingQueue {
     @Override
     public Optional<String> findToken(long userId) {
         return Optional.ofNullable(redisTemplate.opsForValue().get(tokenKey(userId)))
-            .filter(value -> !USED_MARKER.equals(value));
+            .filter(value -> !value.startsWith(USED_MARKER_PREFIX));
     }
 
     @Override
@@ -142,7 +146,8 @@ public class RedisWaitingQueue implements WaitingQueue {
 
     @Override
     public boolean isTokenUsed(long userId) {
-        return USED_MARKER.equals(redisTemplate.opsForValue().get(tokenKey(userId)));
+        String value = redisTemplate.opsForValue().get(tokenKey(userId));
+        return value != null && value.startsWith(USED_MARKER_PREFIX);
     }
 
     @Override

@@ -461,5 +461,27 @@ class RedisWaitingQueueIntegrationTest {
                 () -> assertThat(waitingQueue.findToken(101L)).isEmpty()
             );
         }
+
+        @DisplayName("다른 토큰의 소비로 남은 마커는, 복구하지 않는다.")
+        @Test
+        void doesNotRestore_whenMarkerBelongsToDifferentToken() {
+            // arrange — token-a 소비 후, 재진입으로 재발급된 token-b 가 다시 소비된 상황
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
+            waitingQueue.consumeToken(101L, "token-a", TOKEN_TTL);
+            waitingQueue.enter(101L, 2_000L);
+            waitingQueue.admit(List.of("token-b"), TOKEN_TTL);
+            waitingQueue.consumeToken(101L, "token-b", TOKEN_TTL);
+
+            // act — 뒤늦게 도착한 token-a 의 복구 시도
+            boolean restored = waitingQueue.restoreToken(101L, "token-a", TOKEN_TTL);
+
+            // assert — token-b 의 마커가 그대로 남아 있어야 한다.
+            assertAll(
+                () -> assertThat(restored).isFalse(),
+                () -> assertThat(waitingQueue.isTokenUsed(101L)).isTrue(),
+                () -> assertThat(waitingQueue.findToken(101L)).isEmpty()
+            );
+        }
     }
 }

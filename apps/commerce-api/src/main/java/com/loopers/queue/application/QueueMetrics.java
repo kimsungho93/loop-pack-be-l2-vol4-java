@@ -20,7 +20,7 @@ public class QueueMetrics {
             .description("입장 토큰을 발급받은 누적 인원 수")
             .register(meterRegistry);
         this.tokenConsumedCounter = Counter.builder("queue.token.consumed.total")
-            .description("주문에 사용된 입장 토큰 누적 수")
+            .description("게이트에서 소비된 입장 토큰 누적 수 (복구된 소비 포함)")
             .register(meterRegistry);
         this.tokenRestoredCounter = Counter.builder("queue.token.restored.total")
             .description("주문 실패로 복구된 입장 토큰 누적 수")
