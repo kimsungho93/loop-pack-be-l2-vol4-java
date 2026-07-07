@@ -22,7 +22,7 @@ class QueueFacadeTest {
 
     // batchSize 10, 100ms 간격 → 초당 100명 처리. 폴링 정책은 jitter 0으로 결정적.
     private final QueueProperties properties = new QueueProperties(
-        10, 100L, Duration.ofMinutes(5), Duration.ofMinutes(30), new QueueProperties.Poll(0.15, 3L, 30L, 0));
+        10, 100L, Duration.ofMinutes(5), Duration.ofMinutes(30), 16, new QueueProperties.Poll(0.15, 3L, 30L, 0));
     private final WaitingQueue waitingQueue = mock(WaitingQueue.class);
     private final QueueFacade queueFacade = new QueueFacade(waitingQueue, properties);
 

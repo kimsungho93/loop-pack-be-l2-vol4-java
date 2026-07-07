@@ -52,6 +52,7 @@ commerce:
     admit-batch-size: 5
     token-ttl: 5m
     waiting-token-ttl: 30m
+    order-concurrency-limit: 16
     poll:
       ratio: 0.15
       min-seconds: 3
@@ -132,6 +133,7 @@ commerce:
   queue:
     admit-enabled: false
     order-gate-enabled: false
+    order-bulkhead-enabled: false
   payment:
     recovery:
       enabled: false

@@ -20,6 +20,13 @@ public record QueueProperties(
     @DefaultValue("100") long admitFixedDelayMs,
     @DefaultValue("5m") Duration tokenTtl,
     @DefaultValue("30m") Duration waitingTokenTtl,
+    /**
+     * 주문 동시 실행 상한(벌크헤드) — 2026-07-07 동시성 스윕 실측 기반:
+     * C=8에서 처리량 무릎(90 req/s), C=16까지 처리량 유지(92.7)에 지연 수용(p95 214ms),
+     * C=32부터는 처리량 이득 없이 지연만 증가(순수 큐잉), C=64에서는 처리량 하락.
+     * 평시 동시 주문 ~4(입장 50/s × 80ms)의 4배 여유를 두면서 큐잉 붕괴 전에 자르는 지점이 16.
+     */
+    @DefaultValue("16") int orderConcurrencyLimit,
     @DefaultValue Poll poll
 ) {
 
@@ -35,6 +42,9 @@ public record QueueProperties(
         }
         if (waitingTokenTtl == null || waitingTokenTtl.isZero() || waitingTokenTtl.isNegative()) {
             throw new IllegalArgumentException("waitingTokenTtl must be positive.");
+        }
+        if (orderConcurrencyLimit <= 0) {
+            throw new IllegalArgumentException("orderConcurrencyLimit must be positive.");
         }
         if (poll == null) {
             throw new IllegalArgumentException("poll must not be null.");

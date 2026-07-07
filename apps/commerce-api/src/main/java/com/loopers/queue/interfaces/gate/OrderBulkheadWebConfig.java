@@ -9,16 +9,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @RequiredArgsConstructor
 @Configuration
 @ConditionalOnProperty(
-    name = "commerce.queue.order-gate-enabled",
+    name = "commerce.queue.order-bulkhead-enabled",
     havingValue = "true",
     matchIfMissing = true
 )
-public class QueueGateWebConfig implements WebMvcConfigurer {
+public class OrderBulkheadWebConfig implements WebMvcConfigurer {
 
-    private final QueueGateInterceptor queueGateInterceptor;
+    private final OrderBulkheadInterceptor orderBulkheadInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(queueGateInterceptor).addPathPatterns("/api/v1/orders").order(1);
+        // 게이트(토큰 소비, order 1)보다 먼저 실행해 벌크헤드 거절이 토큰을 낭비하지 않게 한다.
+        registry.addInterceptor(orderBulkheadInterceptor).addPathPatterns("/api/v1/orders").order(0);
     }
 }
