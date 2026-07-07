@@ -153,7 +153,7 @@ class RedisWaitingQueueIntegrationTest {
 
         private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
 
-        @DisplayName("대기 인원이 배치보다 많으면, 배치 크기만큼만 앞에서부터 입장시킨다.")
+        @DisplayName("대기 인원이 배치보다 많으면, 배치 크기만큼만 앞에서부터 입장시키고 각자의 대기 시간을 반환한다.")
         @Test
         void admitsBatchSizeFromFront_whenWaitingExceedsBatch() {
             // arrange
@@ -162,11 +162,12 @@ class RedisWaitingQueueIntegrationTest {
             waitingQueue.enter(103L, 3_000L);
 
             // act
-            int admitted = waitingQueue.admit(List.of("token-a", "token-b"), TOKEN_TTL);
+            List<Long> waitedMillis = waitingQueue.admit(List.of("token-a", "token-b"), TOKEN_TTL);
 
             // assert
             assertAll(
-                () -> assertThat(admitted).isEqualTo(2),
+                () -> assertThat(waitedMillis).hasSize(2),
+                () -> assertThat(waitedMillis).allSatisfy(waited -> assertThat(waited).isPositive()),
                 () -> assertThat(waitingQueue.findToken(101L)).contains("token-a"),
                 () -> assertThat(waitingQueue.findToken(102L)).contains("token-b"),
                 () -> assertThat(waitingQueue.findToken(103L)).isEmpty(),
@@ -182,11 +183,11 @@ class RedisWaitingQueueIntegrationTest {
             waitingQueue.enter(101L, 1_000L);
 
             // act
-            int admitted = waitingQueue.admit(List.of("token-a", "token-b"), TOKEN_TTL);
+            List<Long> waitedMillis = waitingQueue.admit(List.of("token-a", "token-b"), TOKEN_TTL);
 
             // assert
             assertAll(
-                () -> assertThat(admitted).isEqualTo(1),
+                () -> assertThat(waitedMillis).hasSize(1),
                 () -> assertThat(waitingQueue.findToken(101L)).contains("token-a"),
                 () -> assertThat(waitingQueue.countWaiting()).isZero()
             );
@@ -196,10 +197,10 @@ class RedisWaitingQueueIntegrationTest {
         @Test
         void admitsNobody_whenQueueIsEmpty() {
             // act
-            int admitted = waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
+            List<Long> waitedMillis = waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
 
             // assert
-            assertThat(admitted).isZero();
+            assertThat(waitedMillis).isEmpty();
         }
 
         @DisplayName("발급된 토큰에는 만료 시간이 설정된다.")
@@ -324,6 +325,70 @@ class RedisWaitingQueueIntegrationTest {
         }
     }
 
+    @DisplayName("활성 입장 토큰 수를 셀 때 ")
+    @Nested
+    class CountActiveTokens {
+
+        private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
+
+        @DisplayName("입장한 인원만큼 활성 토큰이 늘어난다.")
+        @Test
+        void countsAdmittedTokens() {
+            // arrange
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.enter(102L, 2_000L);
+
+            // act
+            waitingQueue.admit(List.of("token-a", "token-b"), TOKEN_TTL);
+
+            // assert
+            assertThat(waitingQueue.countActiveTokens()).isEqualTo(2L);
+        }
+
+        @DisplayName("토큰이 소비되면, 활성 수에서 빠진다.")
+        @Test
+        void excludesConsumedToken() {
+            // arrange
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
+
+            // act
+            waitingQueue.consumeToken(101L, "token-a", TOKEN_TTL);
+
+            // assert
+            assertThat(waitingQueue.countActiveTokens()).isZero();
+        }
+
+        @DisplayName("토큰이 복구되면, 활성 수로 되돌아온다.")
+        @Test
+        void includesRestoredToken() {
+            // arrange
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.admit(List.of("token-a"), TOKEN_TTL);
+            waitingQueue.consumeToken(101L, "token-a", TOKEN_TTL);
+
+            // act
+            waitingQueue.restoreToken(101L, "token-a", TOKEN_TTL);
+
+            // assert
+            assertThat(waitingQueue.countActiveTokens()).isEqualTo(1L);
+        }
+
+        @DisplayName("만료 시간이 지난 토큰은, 활성 수에서 제외된다.")
+        @Test
+        void excludesExpiredToken() throws InterruptedException {
+            // arrange
+            waitingQueue.enter(101L, 1_000L);
+            waitingQueue.admit(List.of("token-a"), Duration.ofMillis(100));
+
+            // act
+            Thread.sleep(300);
+
+            // assert
+            assertThat(waitingQueue.countActiveTokens()).isZero();
+        }
+    }
+
     @DisplayName("대기 토큰을 다룰 때 ")
     @Nested
     class WaitingToken {
@@ -416,7 +481,7 @@ class RedisWaitingQueueIntegrationTest {
                         List<String> tokens = IntStream.range(0, batchSize)
                             .mapToObj(i -> "token-" + currentRun + "-" + i)
                             .toList();
-                        totalAdmitted.addAndGet(waitingQueue.admit(tokens, Duration.ofMinutes(5)));
+                        totalAdmitted.addAndGet(waitingQueue.admit(tokens, Duration.ofMinutes(5)).size());
                     } finally {
                         latch.countDown();
                     }

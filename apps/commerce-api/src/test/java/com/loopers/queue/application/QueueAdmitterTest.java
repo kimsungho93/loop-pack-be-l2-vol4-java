@@ -24,11 +24,11 @@ class QueueAdmitterTest {
     private final QueueMetrics queueMetrics = mock(QueueMetrics.class);
     private final QueueAdmitter queueAdmitter = new QueueAdmitter(waitingQueue, properties, queueMetrics);
 
-    @DisplayName("다음 배치를 입장시키면, 배치 크기만큼 서로 다른 토큰을 만들어 전달하고 입장 인원을 지표로 남긴다.")
+    @DisplayName("다음 배치를 입장시키면, 배치 크기만큼 서로 다른 토큰을 만들어 전달하고 대기 시간을 지표로 남긴다.")
     @Test
     void admitsWithDistinctTokensOfBatchSize() {
         // arrange
-        when(waitingQueue.admit(anyList(), eq(Duration.ofMinutes(5)))).thenReturn(3);
+        when(waitingQueue.admit(anyList(), eq(Duration.ofMinutes(5)))).thenReturn(List.of(10L, 20L, 30L));
 
         // act
         int admitted = queueAdmitter.admitNextBatch();
@@ -42,7 +42,7 @@ class QueueAdmitterTest {
             () -> assertThat(admitted).isEqualTo(3),
             () -> assertThat(tokens).hasSize(10),
             () -> assertThat(new HashSet<>(tokens)).hasSize(10),
-            () -> verify(queueMetrics).recordAdmitted(3)
+            () -> verify(queueMetrics).recordAdmitted(List.of(10L, 20L, 30L))
         );
     }
 }

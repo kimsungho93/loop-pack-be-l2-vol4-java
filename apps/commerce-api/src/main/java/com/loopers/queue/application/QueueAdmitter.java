@@ -19,8 +19,8 @@ public class QueueAdmitter {
         List<String> tokens = IntStream.range(0, queueProperties.admitBatchSize())
             .mapToObj(i -> UUID.randomUUID().toString())
             .toList();
-        int admitted = waitingQueue.admit(tokens, queueProperties.tokenTtl());
-        queueMetrics.recordAdmitted(admitted);
-        return admitted;
+        List<Long> waitedMillis = waitingQueue.admit(tokens, queueProperties.tokenTtl());
+        queueMetrics.recordAdmitted(waitedMillis);
+        return waitedMillis.size();
     }
 }

@@ -23,9 +23,12 @@ public interface WaitingQueue {
     /**
      * 대기열 앞에서부터 최대 {@code tokens.size()}명을 꺼내 입장 토큰을 발급한다.
      *
-     * @return 실제로 입장시킨 인원 수
+     * @return 입장한 각 사용자의 실제 대기 시간(ms) — 크기가 곧 입장 인원 수다
      */
-    int admit(List<String> tokens, Duration tokenTtl);
+    List<Long> admit(List<String> tokens, Duration tokenTtl);
+
+    /** 아직 소비되지 않고 만료도 안 된 입장 토큰 수 — "지금 유효한 입장권 재고"의 실시간 관측값. */
+    long countActiveTokens();
 
     Optional<String> findToken(long userId);
 
