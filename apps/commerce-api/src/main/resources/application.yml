@@ -51,6 +51,11 @@ commerce:
     admit-fixed-delay-ms: 100
     admit-batch-size: 5
     token-ttl: 5m
+    poll:
+      ratio: 0.15
+      min-seconds: 3
+      max-seconds: 30
+      jitter-percent: 10
   product-detail-cache:
     ttl-seconds: 30
     jitter-seconds: 5

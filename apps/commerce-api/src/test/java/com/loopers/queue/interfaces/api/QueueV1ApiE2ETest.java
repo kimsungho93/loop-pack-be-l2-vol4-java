@@ -119,7 +119,7 @@ class QueueV1ApiE2ETest {
     @Nested
     class GetPosition {
 
-        @DisplayName("줄에 서 있으면, WAITING 상태와 순번, 예상 대기 시간을 반환한다.")
+        @DisplayName("줄에 서 있으면, WAITING 상태와 순번, 예상 대기 시간, 다음 폴링 간격을 반환한다.")
         @Test
         void returnsWaitingWithEstimate_whenUserIsInQueue() {
             // arrange
@@ -136,11 +136,14 @@ class QueueV1ApiE2ETest {
                 () -> assertThat(data.status()).isEqualTo(QueueEntryStatus.WAITING),
                 () -> assertThat(data.position()).isEqualTo(1L),
                 () -> assertThat(data.estimatedWaitSeconds()).isPositive(),
+                () -> assertThat(data.pollAfterSeconds()).isGreaterThanOrEqualTo(3L),
+                () -> assertThat(response.getHeaders().getFirst("Retry-After"))
+                    .isEqualTo(String.valueOf(data.pollAfterSeconds())),
                 () -> assertThat(data.token()).isNull()
             );
         }
 
-        @DisplayName("입장이 완료되면, READY 상태와 입장 토큰을 반환한다.")
+        @DisplayName("입장이 완료되면, READY 상태와 입장 토큰을 반환하고 폴링 간격은 없다.")
         @Test
         void returnsReadyWithToken_whenUserIsAdmitted() {
             // arrange
@@ -151,12 +154,14 @@ class QueueV1ApiE2ETest {
             // act
             ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = getPosition(authHeaders(LOGIN_ID));
 
-            // assert
+            // assert — 폴링 중단 신호: pollAfterSeconds 도 Retry-After 헤더도 없어야 한다.
             QueueV1Dto.PositionResponse data = response.getBody().data();
             assertAll(
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(data.status()).isEqualTo(QueueEntryStatus.READY),
-                () -> assertThat(data.token()).isNotBlank()
+                () -> assertThat(data.token()).isNotBlank(),
+                () -> assertThat(data.pollAfterSeconds()).isNull(),
+                () -> assertThat(response.getHeaders().getFirst("Retry-After")).isNull()
             );
         }
 
