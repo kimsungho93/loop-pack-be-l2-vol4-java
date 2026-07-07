@@ -1,9 +1,12 @@
 package com.loopers.queue.application;
 
 import com.loopers.queue.domain.QueueEntryStatus;
+import com.loopers.shared.error.CoreException;
+import com.loopers.shared.error.ErrorType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.RedisConnectionFailureException;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -12,6 +15,7 @@ import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -99,6 +103,40 @@ class QueueFacadeTest {
 
             // assert
             assertThat(info.status()).isEqualTo(QueueEntryStatus.EXPIRED);
+        }
+    }
+
+    @DisplayName("대기열 저장소가 응답하지 못할 때 ")
+    @Nested
+    class StoreUnavailable {
+
+        @DisplayName("진입 요청이면, 503 SERVICE_UNAVAILABLE로 재시도를 안내한다.")
+        @Test
+        void throwsServiceUnavailable_whenEnterFailsByStoreOutage() {
+            // arrange
+            when(waitingQueue.enter(anyLong(), anyLong()))
+                .thenThrow(new RedisConnectionFailureException("redis down"));
+
+            // act
+            CoreException exception = assertThrows(CoreException.class, () -> queueFacade.enter(101L));
+
+            // assert
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.SERVICE_UNAVAILABLE);
+        }
+
+        @DisplayName("순번 조회면, 503 SERVICE_UNAVAILABLE로 재시도를 안내한다.")
+        @Test
+        void throwsServiceUnavailable_whenPositionLookupFailsByStoreOutage() {
+            // arrange
+            when(waitingQueue.findUserIdByWaitingToken("waiting-token-a"))
+                .thenThrow(new RedisConnectionFailureException("redis down"));
+
+            // act
+            CoreException exception = assertThrows(
+                CoreException.class, () -> queueFacade.getPositionByWaitingToken("waiting-token-a"));
+
+            // assert
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.SERVICE_UNAVAILABLE);
         }
     }
 

@@ -4,7 +4,9 @@ import com.loopers.config.redis.RedisConfig;
 import com.loopers.queue.application.QueueEnterResult;
 import com.loopers.queue.application.TokenConsumeResult;
 import com.loopers.queue.application.WaitingQueue;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
@@ -14,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+@Slf4j
 @Component
 public class RedisWaitingQueue implements WaitingQueue {
 
@@ -141,12 +144,19 @@ public class RedisWaitingQueue implements WaitingQueue {
 
     @Override
     public TokenConsumeResult consumeToken(long userId, String token, Duration usedMarkerTtl) {
-        Long result = masterRedisTemplate.execute(
-            CONSUME_TOKEN_SCRIPT,
-            List.of(tokenKey(userId)),
-            token,
-            String.valueOf(usedMarkerTtl.toMillis())
-        );
+        Long result;
+        try {
+            result = masterRedisTemplate.execute(
+                CONSUME_TOKEN_SCRIPT,
+                List.of(tokenKey(userId)),
+                token,
+                String.valueOf(usedMarkerTtl.toMillis())
+            );
+        } catch (DataAccessException e) {
+            // "아니오"라고 답한 것(INVALID)과 달리 답을 못한 것 — 통과/거절 정책은 게이트가 정하도록 판정만 전달한다.
+            log.error("Failed to consume queue token: store unavailable. userId={}", userId, e);
+            return TokenConsumeResult.UNDECIDED;
+        }
         if (result != null && result == 1L) {
             return TokenConsumeResult.CONSUMED;
         }
@@ -164,12 +174,19 @@ public class RedisWaitingQueue implements WaitingQueue {
 
     @Override
     public boolean restoreToken(long userId, String token, Duration tokenTtl) {
-        Long restored = masterRedisTemplate.execute(
-            RESTORE_TOKEN_SCRIPT,
-            List.of(tokenKey(userId)),
-            token,
-            String.valueOf(tokenTtl.toMillis())
-        );
+        Long restored;
+        try {
+            restored = masterRedisTemplate.execute(
+                RESTORE_TOKEN_SCRIPT,
+                List.of(tokenKey(userId)),
+                token,
+                String.valueOf(tokenTtl.toMillis())
+            );
+        } catch (DataAccessException e) {
+            // 복구는 최선 노력 — 저장소 장애면 실패로 처리하고 사용자는 회복 후 재진입한다.
+            log.error("Failed to restore queue token: store unavailable. userId={}", userId, e);
+            return false;
+        }
         return restored != null && restored == 1L;
     }
 

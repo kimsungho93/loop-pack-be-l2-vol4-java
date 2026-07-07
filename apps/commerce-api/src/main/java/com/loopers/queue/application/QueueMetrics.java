@@ -11,6 +11,7 @@ public class QueueMetrics {
     private final Counter admittedCounter;
     private final Counter tokenConsumedCounter;
     private final Counter tokenRestoredCounter;
+    private final Counter gateFailOpenCounter;
 
     public QueueMetrics(MeterRegistry meterRegistry, WaitingQueue waitingQueue) {
         Gauge.builder("queue.waiting.depth", waitingQueue, WaitingQueue::countWaiting)
@@ -25,6 +26,9 @@ public class QueueMetrics {
         this.tokenRestoredCounter = Counter.builder("queue.token.restored.total")
             .description("주문 실패로 복구된 입장 토큰 누적 수")
             .register(meterRegistry);
+        this.gateFailOpenCounter = Counter.builder("queue.gate.failopen.total")
+            .description("게이트 판정 불가로 fail-open 통과한 누적 요청 수 (Redis 장애 신호)")
+            .register(meterRegistry);
     }
 
     public void recordAdmitted(int admitted) {
@@ -37,5 +41,10 @@ public class QueueMetrics {
 
     public void recordTokenRestored() {
         tokenRestoredCounter.increment();
+    }
+
+    /** 게이트 저장소 판정 불가로 fail-open 통과가 발생 — 오르기 시작하면 Redis 장애 신호이므로 알람 대상. */
+    public void recordGateFailOpen() {
+        gateFailOpenCounter.increment();
     }
 }

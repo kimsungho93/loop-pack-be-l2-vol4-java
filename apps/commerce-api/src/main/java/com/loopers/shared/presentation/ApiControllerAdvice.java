@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.loopers.shared.error.CoreException;
 import com.loopers.shared.error.ErrorType;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MissingRequestHeaderException;
@@ -137,7 +138,11 @@ public class ApiControllerAdvice {
     }
 
     private ResponseEntity<ApiResponse<?>> failureResponse(ErrorType errorType, String errorMessage) {
-        return ResponseEntity.status(errorType.getStatus())
-            .body(ApiResponse.fail(errorType.getCode(), errorMessage != null ? errorMessage : errorType.getMessage()));
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(errorType.getStatus());
+        // 일시 장애(503)는 클라이언트가 돌격 대신 백오프 재시도를 하도록 재시도 힌트를 준다.
+        if (errorType.getStatus() == HttpStatus.SERVICE_UNAVAILABLE) {
+            builder.header("Retry-After", "5");
+        }
+        return builder.body(ApiResponse.fail(errorType.getCode(), errorMessage != null ? errorMessage : errorType.getMessage()));
     }
 }

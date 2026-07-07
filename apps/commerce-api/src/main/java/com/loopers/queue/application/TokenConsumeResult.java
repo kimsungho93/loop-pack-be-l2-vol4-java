@@ -7,4 +7,6 @@ public enum TokenConsumeResult {
     ALREADY_USED,
     /** 토큰 불일치·만료·미발급 — 게이트 통과 불가 */
     INVALID,
+    /** 저장소가 응답하지 못해 판정 불가 — 게이트 정책상 통과(fail-open). 뒤의 벌크헤드·DB 가드가 받친다. */
+    UNDECIDED,
 }

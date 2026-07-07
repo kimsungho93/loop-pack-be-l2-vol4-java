@@ -9,11 +9,13 @@ import com.loopers.shared.error.ErrorType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+@Slf4j
 @RequiredArgsConstructor
 @Component
 public class QueueGateInterceptor implements HandlerInterceptor {
@@ -48,6 +50,13 @@ public class QueueGateInterceptor implements HandlerInterceptor {
             }
             case ALREADY_USED -> throw new CoreException(ErrorType.CONFLICT, "이미 주문이 완료된 토큰입니다. 주문 내역을 확인해주세요.");
             case INVALID -> throw invalidTokenException();
+            // 판정 불가(저장소 장애)는 fail-open — 대기열은 유일한 방어선이 아니다(벌크헤드·DB 가드가 받침).
+            // 소비하지 않았으므로 복구 표식도 남기지 않는다.
+            case UNDECIDED -> {
+                log.warn("Queue gate fail-open: token store unavailable. userId={}", userId);
+                queueMetrics.recordGateFailOpen();
+                yield true;
+            }
         };
     }
 
