@@ -324,6 +324,44 @@ class RedisWaitingQueueIntegrationTest {
         }
     }
 
+    @DisplayName("대기 토큰을 다룰 때 ")
+    @Nested
+    class WaitingToken {
+
+        @DisplayName("저장한 대기 토큰으로 사용자를 찾을 수 있다.")
+        @Test
+        void findsUserIdByWaitingToken_afterSave() {
+            // arrange
+            waitingQueue.saveWaitingToken("waiting-token-a", 101L, Duration.ofMinutes(30));
+
+            // act
+            Optional<Long> userId = waitingQueue.findUserIdByWaitingToken("waiting-token-a");
+
+            // assert
+            assertThat(userId).contains(101L);
+        }
+
+        @DisplayName("저장된 적 없는 대기 토큰이면, 빈 값을 반환한다.")
+        @Test
+        void returnsEmpty_whenWaitingTokenIsUnknown() {
+            // act
+            Optional<Long> userId = waitingQueue.findUserIdByWaitingToken("unknown-token");
+
+            // assert
+            assertThat(userId).isEmpty();
+        }
+
+        @DisplayName("대기 토큰에는 만료 시간이 설정된다.")
+        @Test
+        void setsTtlOnWaitingToken() {
+            // act
+            waitingQueue.saveWaitingToken("waiting-token-a", 101L, Duration.ofMinutes(30));
+
+            // assert
+            assertThat(redisTemplate.getExpire("queue:waiting-token:waiting-token-a")).isPositive();
+        }
+    }
+
     @DisplayName("동시에 요청이 몰릴 때 ")
     @Nested
     class Concurrency {

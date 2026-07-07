@@ -19,6 +19,7 @@ public record QueueProperties(
     @DefaultValue("5") int admitBatchSize,
     @DefaultValue("100") long admitFixedDelayMs,
     @DefaultValue("5m") Duration tokenTtl,
+    @DefaultValue("30m") Duration waitingTokenTtl,
     @DefaultValue Poll poll
 ) {
 
@@ -31,6 +32,9 @@ public record QueueProperties(
         }
         if (tokenTtl == null || tokenTtl.isZero() || tokenTtl.isNegative()) {
             throw new IllegalArgumentException("tokenTtl must be positive.");
+        }
+        if (waitingTokenTtl == null || waitingTokenTtl.isZero() || waitingTokenTtl.isNegative()) {
+            throw new IllegalArgumentException("waitingTokenTtl must be positive.");
         }
         if (poll == null) {
             throw new IllegalArgumentException("poll must not be null.");

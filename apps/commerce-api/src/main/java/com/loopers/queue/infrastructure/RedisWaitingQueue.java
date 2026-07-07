@@ -19,6 +19,7 @@ public class RedisWaitingQueue implements WaitingQueue {
 
     private static final String WAITING_KEY = "queue:waiting";
     private static final String TOKEN_KEY_PREFIX = "queue:entry-token:";
+    private static final String WAITING_TOKEN_KEY_PREFIX = "queue:waiting-token:";
     // 소비된 토큰 자리에 남기는 sentinel. 'USED:{원본 토큰}' 형태로 출처를 남겨
     // 다른 소비의 마커를 복구하는 것(유령 복구)을 막는다. 토큰 값은 UUID 형식이라 충돌하지 않는다.
     private static final String USED_MARKER_PREFIX = "USED:";
@@ -101,6 +102,17 @@ public class RedisWaitingQueue implements WaitingQueue {
     }
 
     @Override
+    public void saveWaitingToken(String waitingToken, long userId, Duration ttl) {
+        masterRedisTemplate.opsForValue().set(waitingTokenKey(waitingToken), String.valueOf(userId), ttl);
+    }
+
+    @Override
+    public Optional<Long> findUserIdByWaitingToken(String waitingToken) {
+        return Optional.ofNullable(redisTemplate.opsForValue().get(waitingTokenKey(waitingToken)))
+            .map(Long::parseLong);
+    }
+
+    @Override
     public Optional<Long> findRank(long userId) {
         return Optional.ofNullable(redisTemplate.opsForZSet().rank(WAITING_KEY, String.valueOf(userId)));
     }
@@ -163,5 +175,9 @@ public class RedisWaitingQueue implements WaitingQueue {
 
     private String tokenKey(long userId) {
         return TOKEN_KEY_PREFIX + userId;
+    }
+
+    private String waitingTokenKey(String waitingToken) {
+        return WAITING_TOKEN_KEY_PREFIX + waitingToken;
     }
 }

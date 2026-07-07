@@ -39,6 +39,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/v1/payments/callback").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/brands/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
+                // 순번 조회 폴링은 비밀번호 인증(BCrypt) 대신 진입 시 발급한 대기 토큰(X-Waiting-Token)으로 식별한다.
+                .requestMatchers(HttpMethod.GET, "/api/v1/queue/position").permitAll()
                 .requestMatchers("/api-admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll()

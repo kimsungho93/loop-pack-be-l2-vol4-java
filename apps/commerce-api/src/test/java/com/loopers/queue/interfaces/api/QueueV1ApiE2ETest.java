@@ -65,22 +65,23 @@ class QueueV1ApiE2ETest {
     @Nested
     class Enter {
 
-        @DisplayName("대기열에 진입하면, 200 OK와 WAITING 상태, 배정된 순번을 반환한다.")
+        @DisplayName("대기열에 진입하면, 200 OK와 WAITING 상태, 배정된 순번, 대기 토큰을 반환한다.")
         @Test
         void returnsWaitingWithPosition_whenUserEnters() {
             // arrange
             signUpUser(LOGIN_ID);
 
             // act
-            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = enter(authHeaders(LOGIN_ID));
+            ResponseEntity<ApiResponse<QueueV1Dto.EnterResponse>> response = enter(authHeaders(LOGIN_ID));
 
             // assert
-            QueueV1Dto.PositionResponse data = response.getBody().data();
+            QueueV1Dto.EnterResponse data = response.getBody().data();
             assertAll(
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(data.status()).isEqualTo(QueueEntryStatus.WAITING),
                 () -> assertThat(data.position()).isEqualTo(1L),
-                () -> assertThat(data.totalWaiting()).isEqualTo(1L)
+                () -> assertThat(data.totalWaiting()).isEqualTo(1L),
+                () -> assertThat(data.waitingToken()).isNotBlank()
             );
         }
 
@@ -94,10 +95,10 @@ class QueueV1ApiE2ETest {
             enter(authHeaders(OTHER_LOGIN_ID));
 
             // act
-            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = enter(authHeaders(LOGIN_ID));
+            ResponseEntity<ApiResponse<QueueV1Dto.EnterResponse>> response = enter(authHeaders(LOGIN_ID));
 
             // assert
-            QueueV1Dto.PositionResponse data = response.getBody().data();
+            QueueV1Dto.EnterResponse data = response.getBody().data();
             assertAll(
                 () -> assertThat(data.position()).isEqualTo(1L),
                 () -> assertThat(data.totalWaiting()).isEqualTo(2L)
@@ -108,7 +109,7 @@ class QueueV1ApiE2ETest {
         @Test
         void returnsUnauthorized_whenAuthenticationHeadersAreMissing() {
             // act
-            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = enter(new HttpHeaders());
+            ResponseEntity<ApiResponse<QueueV1Dto.EnterResponse>> response = enter(new HttpHeaders());
 
             // assert
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -119,15 +120,15 @@ class QueueV1ApiE2ETest {
     @Nested
     class GetPosition {
 
-        @DisplayName("줄에 서 있으면, WAITING 상태와 순번, 예상 대기 시간, 다음 폴링 간격을 반환한다.")
+        @DisplayName("인증 없이 대기 토큰만으로, WAITING 상태와 순번, 예상 대기 시간, 다음 폴링 간격을 조회한다.")
         @Test
-        void returnsWaitingWithEstimate_whenUserIsInQueue() {
+        void returnsWaitingWithEstimate_whenPolledWithWaitingTokenOnly() {
             // arrange
             signUpUser(LOGIN_ID);
-            enter(authHeaders(LOGIN_ID));
+            String waitingToken = enter(authHeaders(LOGIN_ID)).getBody().data().waitingToken();
 
-            // act
-            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = getPosition(authHeaders(LOGIN_ID));
+            // act — 인증 헤더 없이 대기 토큰만 보낸다.
+            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = getPosition(waitingToken);
 
             // assert
             QueueV1Dto.PositionResponse data = response.getBody().data();
@@ -148,11 +149,11 @@ class QueueV1ApiE2ETest {
         void returnsReadyWithToken_whenUserIsAdmitted() {
             // arrange
             signUpUser(LOGIN_ID);
-            enter(authHeaders(LOGIN_ID));
+            String waitingToken = enter(authHeaders(LOGIN_ID)).getBody().data().waitingToken();
             queueAdmitter.admitNextBatch();
 
             // act
-            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = getPosition(authHeaders(LOGIN_ID));
+            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = getPosition(waitingToken);
 
             // assert — 폴링 중단 신호: pollAfterSeconds 도 Retry-After 헤더도 없어야 한다.
             QueueV1Dto.PositionResponse data = response.getBody().data();
@@ -165,14 +166,11 @@ class QueueV1ApiE2ETest {
             );
         }
 
-        @DisplayName("줄에도 없고 토큰도 없으면, 에러가 아닌 200 OK와 EXPIRED 상태를 반환한다.")
+        @DisplayName("알 수 없는 대기 토큰이면, 에러가 아닌 200 OK와 EXPIRED 상태를 반환한다.")
         @Test
-        void returnsExpiredWithOkStatus_whenUserIsNowhere() {
-            // arrange
-            signUpUser(LOGIN_ID);
-
+        void returnsExpiredWithOkStatus_whenWaitingTokenIsUnknown() {
             // act
-            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = getPosition(authHeaders(LOGIN_ID));
+            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = getPosition("unknown-waiting-token");
 
             // assert
             assertAll(
@@ -180,14 +178,27 @@ class QueueV1ApiE2ETest {
                 () -> assertThat(response.getBody().data().status()).isEqualTo(QueueEntryStatus.EXPIRED)
             );
         }
+
+        @DisplayName("대기 토큰 헤더가 없으면, 400 BAD_REQUEST를 반환한다.")
+        @Test
+        void returnsBadRequest_whenWaitingTokenHeaderIsMissing() {
+            // act
+            ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> response = testRestTemplate.exchange(
+                ENDPOINT_POSITION, HttpMethod.GET, new HttpEntity<>(new HttpHeaders()), new ParameterizedTypeReference<>() {});
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
     }
 
-    private ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> enter(HttpHeaders headers) {
-        ParameterizedTypeReference<ApiResponse<QueueV1Dto.PositionResponse>> responseType = new ParameterizedTypeReference<>() {};
+    private ResponseEntity<ApiResponse<QueueV1Dto.EnterResponse>> enter(HttpHeaders headers) {
+        ParameterizedTypeReference<ApiResponse<QueueV1Dto.EnterResponse>> responseType = new ParameterizedTypeReference<>() {};
         return testRestTemplate.exchange(ENDPOINT_ENTER, HttpMethod.POST, new HttpEntity<>(headers), responseType);
     }
 
-    private ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> getPosition(HttpHeaders headers) {
+    private ResponseEntity<ApiResponse<QueueV1Dto.PositionResponse>> getPosition(String waitingToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(QueueV1Controller.WAITING_TOKEN_HEADER, waitingToken);
         ParameterizedTypeReference<ApiResponse<QueueV1Dto.PositionResponse>> responseType = new ParameterizedTypeReference<>() {};
         return testRestTemplate.exchange(ENDPOINT_POSITION, HttpMethod.GET, new HttpEntity<>(headers), responseType);
     }

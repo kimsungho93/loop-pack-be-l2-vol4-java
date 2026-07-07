@@ -8,6 +8,14 @@ public interface WaitingQueue {
 
     QueueEnterResult enter(long userId, long enterAtMillis);
 
+    /**
+     * 순번 조회 폴링용 대기 토큰을 저장한다. 진입 시 1회 발급되며,
+     * 폴링이 요청마다 비밀번호 인증(BCrypt)을 태우지 않도록 가벼운 식별자 역할을 한다.
+     */
+    void saveWaitingToken(String waitingToken, long userId, Duration ttl);
+
+    Optional<Long> findUserIdByWaitingToken(String waitingToken);
+
     Optional<Long> findRank(long userId);
 
     long countWaiting();

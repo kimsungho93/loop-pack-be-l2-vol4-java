@@ -51,6 +51,7 @@ commerce:
     admit-fixed-delay-ms: 100
     admit-batch-size: 5
     token-ttl: 5m
+    waiting-token-ttl: 30m
     poll:
       ratio: 0.15
       min-seconds: 3

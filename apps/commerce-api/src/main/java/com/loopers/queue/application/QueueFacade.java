@@ -3,6 +3,8 @@ package com.loopers.queue.application;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @RequiredArgsConstructor
 @Component
 public class QueueFacade {
@@ -10,9 +12,19 @@ public class QueueFacade {
     private final WaitingQueue waitingQueue;
     private final QueueProperties queueProperties;
 
-    public QueuePositionInfo enter(long userId) {
+    public QueueEnterInfo enter(long userId) {
         QueueEnterResult result = waitingQueue.enter(userId, System.currentTimeMillis());
-        return QueuePositionInfo.waiting(result.position(), result.totalWaiting(), queueProperties.permitsPerSecond(), queueProperties.poll());
+        String waitingToken = UUID.randomUUID().toString();
+        waitingQueue.saveWaitingToken(waitingToken, userId, queueProperties.waitingTokenTtl());
+        QueuePositionInfo position = QueuePositionInfo.waiting(
+            result.position(), result.totalWaiting(), queueProperties.permitsPerSecond(), queueProperties.poll());
+        return new QueueEnterInfo(waitingToken, position);
+    }
+
+    public QueuePositionInfo getPositionByWaitingToken(String waitingToken) {
+        return waitingQueue.findUserIdByWaitingToken(waitingToken)
+            .map(this::getPosition)
+            .orElseGet(QueuePositionInfo::expired);
     }
 
     public QueuePositionInfo getPosition(long userId) {
