@@ -1,0 +1,51 @@
+package com.loopers.queue.application;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
+
+public interface WaitingQueue {
+
+    QueueEnterResult enter(long userId, long enterAtMillis);
+
+    /**
+     * 순번 조회 폴링용 대기 토큰을 저장한다. 진입 시 1회 발급되며,
+     * 폴링이 요청마다 비밀번호 인증(BCrypt)을 태우지 않도록 가벼운 식별자 역할을 한다.
+     */
+    void saveWaitingToken(String waitingToken, long userId, Duration ttl);
+
+    Optional<Long> findUserIdByWaitingToken(String waitingToken);
+
+    Optional<Long> findRank(long userId);
+
+    long countWaiting();
+
+    /**
+     * 대기열 앞에서부터 최대 {@code tokens.size()}명을 꺼내 입장 토큰을 발급한다.
+     *
+     * @return 입장한 각 사용자의 실제 대기 시간(ms) — 크기가 곧 입장 인원 수다
+     */
+    List<Long> admit(List<String> tokens, Duration tokenTtl);
+
+    /** 아직 소비되지 않고 만료도 안 된 입장 토큰 수 — "지금 유효한 입장권 재고"의 실시간 관측값. */
+    long countActiveTokens();
+
+    Optional<String> findToken(long userId);
+
+    /**
+     * 토큰 값이 일치하면 소비하고 사용됨 마커(TTL {@code usedMarkerTtl})로 바꾼다.
+     * 마커가 남아 있는 동안의 재소비는 {@link TokenConsumeResult#ALREADY_USED} 로 구분된다.
+     */
+    TokenConsumeResult consumeToken(long userId, String token, Duration usedMarkerTtl);
+
+    /** 토큰이 소비되어 사용됨 마커 상태인지 확인한다. */
+    boolean isTokenUsed(long userId);
+
+    /**
+     * 사용됨 마커 상태의 토큰을 원래 값으로 되돌린다 (주문 실패 시 차례 보존).
+     * 마커가 이미 만료됐으면 부활시키지 않는다.
+     *
+     * @return 실제로 복구했으면 true
+     */
+    boolean restoreToken(long userId, String token, Duration tokenTtl);
+}

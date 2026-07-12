@@ -2,14 +2,24 @@ package com.loopers.confg.kafka;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.*;
+import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 import org.springframework.kafka.support.converter.BatchMessagingMessageConverter;
 import org.springframework.kafka.support.converter.ByteArrayJsonMessageConverter;
 
@@ -28,10 +38,23 @@ public class KafkaConfig {
     public static final int SESSION_TIMEOUT_MS = 60 * 1000; // session timeout = 1m
     public static final int HEARTBEAT_INTERVAL_MS = 20 * 1000; // heartbeat interval = 20s ( 1/3 of session_timeout )
     public static final int MAX_POLL_INTERVAL_MS = 2 * 60 * 1000; // max poll interval = 2m
+    public static final int DLQ_MAX_RETRIES = 2; // first delivery + 2 retries = 3 attempts
+    public static final long DLQ_INITIAL_INTERVAL_MS = 1_000L;
+    public static final double DLQ_BACKOFF_MULTIPLIER = 2.0;
+    public static final long DLQ_MAX_INTERVAL_MS = 4_000L;
+    public static final String DLT_SUFFIX = ".DLT";
 
     @Bean
     public ProducerFactory<Object, Object> producerFactory(KafkaProperties kafkaProperties) {
         Map<String, Object> props = new HashMap<>(kafkaProperties.buildProducerProperties());
+        return new DefaultKafkaProducerFactory<>(props);
+    }
+
+    @Bean
+    public ProducerFactory<String, byte[]> deadLetterProducerFactory(KafkaProperties kafkaProperties) {
+        Map<String, Object> props = new HashMap<>(kafkaProperties.buildProducerProperties());
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
         return new DefaultKafkaProducerFactory<>(props);
     }
 
@@ -41,9 +64,38 @@ public class KafkaConfig {
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
+    @Primary
     @Bean
-    public KafkaTemplate<Object, Object> kafkaTemplate(ProducerFactory<Object, Object> producerFactory) {
+    public KafkaTemplate<Object, Object> kafkaTemplate(
+        @Qualifier("producerFactory") ProducerFactory<Object, Object> producerFactory
+    ) {
         return new KafkaTemplate<>(producerFactory);
+    }
+
+    @Bean
+    public KafkaTemplate<String, byte[]> deadLetterKafkaTemplate(
+        @Qualifier("deadLetterProducerFactory") ProducerFactory<String, byte[]> producerFactory
+    ) {
+        return new KafkaTemplate<>(producerFactory);
+    }
+
+    @Bean
+    public CommonErrorHandler kafkaCommonErrorHandler(KafkaTemplate<String, byte[]> deadLetterKafkaTemplate) {
+        ExponentialBackOffWithMaxRetries backOff = new ExponentialBackOffWithMaxRetries(DLQ_MAX_RETRIES);
+        backOff.setInitialInterval(DLQ_INITIAL_INTERVAL_MS);
+        backOff.setMultiplier(DLQ_BACKOFF_MULTIPLIER);
+        backOff.setMaxInterval(DLQ_MAX_INTERVAL_MS);
+
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
+            deadLetterKafkaTemplate,
+            (record, exception) -> new TopicPartition(record.topic() + DLT_SUFFIX, record.partition())
+        );
+        recoverer.setFailIfSendResultIsError(true);
+
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
+        errorHandler.setAckAfterHandle(true);
+        errorHandler.setSeekAfterError(false);
+        return errorHandler;
     }
 
     @Bean
@@ -54,7 +106,8 @@ public class KafkaConfig {
     @Bean(name = BATCH_LISTENER)
     public ConcurrentKafkaListenerContainerFactory<Object, Object> defaultBatchListenerContainerFactory(
             KafkaProperties kafkaProperties,
-            ByteArrayJsonMessageConverter converter
+            ByteArrayJsonMessageConverter converter,
+            CommonErrorHandler kafkaCommonErrorHandler
     ) {
         Map<String, Object> consumerConfig = new HashMap<>(kafkaProperties.buildConsumerProperties());
         consumerConfig.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, MAX_POLLING_SIZE);
@@ -68,6 +121,7 @@ public class KafkaConfig {
         factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(consumerConfig));
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL); // 수동 커밋
         factory.setBatchMessageConverter(new BatchMessagingMessageConverter(converter));
+        factory.setCommonErrorHandler(kafkaCommonErrorHandler);
         factory.setConcurrency(3);
         factory.setBatchListener(true);
         return factory;
