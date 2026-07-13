@@ -25,6 +25,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -81,7 +82,7 @@ class PaymentRecoveryResultHandlerTest {
                 () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
             );
-            verify(orderPaymentEventPublisher).publishPaid(payment, COMPLETED_AT);
+            verify(orderPaymentEventPublisher).publishPaid(payment, order, COMPLETED_AT);
         }
 
         @DisplayName("결제가 이미 성공이어도 주문이 아직 완료되지 않았다면 결제 완료 이벤트를 발행한다.")
@@ -112,7 +113,7 @@ class PaymentRecoveryResultHandlerTest {
                 () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
             );
-            verify(orderPaymentEventPublisher).publishPaid(payment, COMPLETED_AT);
+            verify(orderPaymentEventPublisher).publishPaid(payment, order, COMPLETED_AT);
         }
 
         @DisplayName("이미 주문까지 결제 완료 상태이면 결제 완료 이벤트를 다시 발행하지 않는다.")
@@ -144,7 +145,7 @@ class PaymentRecoveryResultHandlerTest {
                 () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
             );
-            verify(orderPaymentEventPublisher, never()).publishPaid(payment, COMPLETED_AT);
+            verify(orderPaymentEventPublisher, never()).publishPaid(payment, order, COMPLETED_AT);
         }
 
         @DisplayName("대기 거래이면 다음 복구 시각만 예약한다.")
@@ -174,7 +175,8 @@ class PaymentRecoveryResultHandlerTest {
                 () -> assertThat(payment.getLastRecoveryReason()).isEqualTo("pending")
             );
             verify(orderService, never()).getOrder(ORDER_ID);
-            verify(orderPaymentEventPublisher, never()).publishPaid(payment, COMPLETED_AT);
+            verify(orderPaymentEventPublisher, never())
+                .publishPaid(any(Payment.class), any(Order.class), any(ZonedDateTime.class));
             verify(orderPaymentEventPublisher, never()).publishFailed(payment, COMPLETED_AT);
         }
 

@@ -64,6 +64,37 @@ class CatalogEventOutboxWriterImplTest {
             assertThat(outbox.getPayload()).contains("\"userId\":1");
             assertThat(outbox.getPayload()).contains("\"delta\":1");
         }
+
+        @DisplayName("상품 주문 메시지의 주문 스냅샷을 payload에 저장한다")
+        @Test
+        void savesOrderSnapshotInPayload_whenProductOrdered() {
+            // arrange
+            CatalogEventMessage message = CatalogEventMessage.productOrdered(
+                USER_ID,
+                500L,
+                PRODUCT_ID,
+                2,
+                12_500L,
+                25_000L,
+                OCCURRED_AT
+            );
+
+            // act
+            writer.save(message);
+
+            // assert
+            CatalogEventOutbox outbox = captureOutbox();
+            assertThat(outbox.getEventType()).isEqualTo(CatalogEventType.PRODUCT_ORDERED);
+            assertThat(outbox.getPartitionKey()).isEqualTo(String.valueOf(PRODUCT_ID));
+            assertThat(outbox.getPayload()).contains(
+                "\"productId\":101",
+                "\"userId\":1",
+                "\"orderId\":500",
+                "\"quantity\":2",
+                "\"unitPrice\":12500",
+                "\"totalPrice\":25000"
+            );
+        }
     }
 
     private CatalogEventOutbox captureOutbox() {

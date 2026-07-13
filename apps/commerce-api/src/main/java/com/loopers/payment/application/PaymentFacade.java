@@ -66,7 +66,7 @@ public class PaymentFacade {
             payment.markSucceeded(command.transactionKey(), command.reason(), completedAt);
             order.completePayment();
             if (newlyPaid) {
-                orderPaymentEventPublisher.publishPaid(payment, completedAt);
+                orderPaymentEventPublisher.publishPaid(payment, order, completedAt);
             }
             return;
         }
