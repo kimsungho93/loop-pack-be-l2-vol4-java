@@ -31,6 +31,9 @@ commerce:
       topic-name: catalog-events
       group-id: catalog-metrics
   ranking:
+    catalog:
+      group-id: catalog-ranking
+      auto-startup: true
     score:
       view-weight: 0.1
       like-weight: 0.2
@@ -41,7 +44,18 @@ commerce:
 spring:
   config:
     activate:
-      on-profile: local, test
+      on-profile: local
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+
+commerce:
+  ranking:
+    catalog:
+      auto-startup: false
 
 ---
 spring:
