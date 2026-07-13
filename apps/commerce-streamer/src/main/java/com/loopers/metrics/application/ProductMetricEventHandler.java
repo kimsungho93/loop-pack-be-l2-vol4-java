@@ -12,6 +12,7 @@ public class ProductMetricEventHandler {
 
     private final EventHandledRepository eventHandledRepository;
     private final ProductMetricsRepository productMetricsRepository;
+    private final ProductMetricHourlyRepository productMetricHourlyRepository;
 
     @Transactional
     public void handle(CatalogEventEnvelope event, EventHandlingMetadata metadata) {
@@ -22,5 +23,6 @@ public class ProductMetricEventHandler {
         }
 
         productMetricsRepository.add(ProductMetricDelta.from(event), handledAt);
+        productMetricHourlyRepository.add(ProductMetricHourlyDelta.from(event), handledAt);
     }
 }

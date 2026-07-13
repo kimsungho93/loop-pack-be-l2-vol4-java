@@ -29,6 +29,9 @@ class ProductMetricEventHandlerTest {
     @Mock
     private ProductMetricsRepository productMetricsRepository;
 
+    @Mock
+    private ProductMetricHourlyRepository productMetricHourlyRepository;
+
     @InjectMocks
     private ProductMetricEventHandler handler;
 
@@ -48,6 +51,7 @@ class ProductMetricEventHandlerTest {
 
             // assert
             verify(productMetricsRepository, never()).add(any(), any());
+            verify(productMetricHourlyRepository, never()).add(any(), any());
         }
 
         @DisplayName("상품 조회 이벤트면 조회수를 1 증가시킨다.")
@@ -63,6 +67,29 @@ class ProductMetricEventHandlerTest {
             // assert
             ProductMetricDelta delta = captureDelta();
             assertThat(delta).isEqualTo(new ProductMetricDelta(101L, 0L, 1L, 0L));
+        }
+
+        @DisplayName("신규 상품 이벤트면 발생 시간 Window의 Raw Metric을 저장한다.")
+        @Test
+        void addsHourlyRawMetric_whenEventIsNew() {
+            // arrange
+            CatalogEventEnvelope event = viewedEvent("event-1");
+            when(eventHandledRepository.saveIfAbsent(any(), any(), any())).thenReturn(true);
+
+            // act
+            handler.handle(event, METADATA);
+
+            // assert
+            ArgumentCaptor<ProductMetricHourlyDelta> captor = ArgumentCaptor.forClass(ProductMetricHourlyDelta.class);
+            verify(productMetricHourlyRepository).add(captor.capture(), any());
+            assertThat(captor.getValue()).isEqualTo(new ProductMetricHourlyDelta(
+                OCCURRED_AT.toLocalDateTime().withMinute(0).withSecond(0).withNano(0),
+                101L,
+                1,
+                0,
+                0,
+                0
+            ));
         }
 
         @DisplayName("좋아요 이벤트면 좋아요 수를 1 증가시킨다.")
