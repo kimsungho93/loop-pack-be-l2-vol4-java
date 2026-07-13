@@ -8,6 +8,7 @@ import com.loopers.product.domain.ProductSort;
 import com.loopers.product.domain.QProduct;
 import com.loopers.shared.pagination.PageQuery;
 import com.loopers.shared.pagination.PageResult;
+import com.querydsl.core.types.ConstructorExpression;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.Wildcard;
@@ -18,6 +19,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -34,23 +36,7 @@ public class ProductListQueryDsl implements ProductListQuery {
     @Transactional(readOnly = true)
     public PageResult<ProductListInfo> findVisibleProducts(PageQuery query, Long brandId, ProductSort sort) {
         List<ProductListInfo> content = queryFactory
-            .select(Projections.constructor(
-                ProductListInfo.class,
-                product.id,
-                Projections.constructor(
-                    BrandInfo.class,
-                    brand.id,
-                    brand.name.value,
-                    brand.description,
-                    brand.createdAt,
-                    brand.updatedAt,
-                    brand.deletedAt
-                ),
-                product.name.value,
-                product.description.value,
-                product.price.value,
-                summary.likeCount
-            ))
+            .select(productListProjection())
             .from(summary)
             .join(product).on(product.id.eq(summary.productId))
             .join(brand).on(brand.id.eq(product.brandId))
@@ -69,6 +55,45 @@ public class ProductListQueryDsl implements ProductListQuery {
             PageRequest.of(query.page(), query.size()),
             countVisibleProducts(brandId)
         ));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductListInfo> findVisibleProductsByIds(Collection<Long> productIds) {
+        if (productIds.isEmpty()) {
+            return List.of();
+        }
+        return queryFactory
+            .select(productListProjection())
+            .from(summary)
+            .join(product).on(product.id.eq(summary.productId))
+            .join(brand).on(brand.id.eq(product.brandId))
+            .where(
+                product.id.in(productIds),
+                product.deletedAt.isNull(),
+                brand.deletedAt.isNull()
+            )
+            .fetch();
+    }
+
+    private ConstructorExpression<ProductListInfo> productListProjection() {
+        return Projections.constructor(
+            ProductListInfo.class,
+            product.id,
+            Projections.constructor(
+                BrandInfo.class,
+                brand.id,
+                brand.name.value,
+                brand.description,
+                brand.createdAt,
+                brand.updatedAt,
+                brand.deletedAt
+            ),
+            product.name.value,
+            product.description.value,
+            product.price.value,
+            summary.likeCount
+        );
     }
 
     private long countVisibleProducts(Long brandId) {
