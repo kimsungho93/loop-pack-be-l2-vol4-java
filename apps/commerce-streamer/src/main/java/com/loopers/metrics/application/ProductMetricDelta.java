@@ -19,6 +19,10 @@ public record ProductMetricDelta(
         return switch (event.eventType()) {
             case PRODUCT_VIEWED -> new ProductMetricDelta(productId, 0, 1, 0);
             case PRODUCT_LIKED, PRODUCT_UNLIKED -> new ProductMetricDelta(productId, requiredDelta(event), 0, 0);
+            case PRODUCT_ORDERED -> {
+                ProductOrderEventData order = ProductOrderEventData.from(event);
+                yield new ProductMetricDelta(order.productId(), 0, 0, order.quantity());
+            }
         };
     }
 

@@ -55,6 +55,21 @@ class ProductMetricEventHandlerIntegrationTest {
         assertThat(hourlyViewCount()).isEqualTo(1);
     }
 
+    @DisplayName("상품 주문 이벤트를 처리하면 판매 수량과 시간 단위 주문 지표를 함께 저장한다.")
+    @Test
+    void storesSalesCountAndHourlyOrderMetrics_whenProductOrdered() {
+        // arrange
+        CatalogEventEnvelope event = orderedEvent("event-1");
+
+        // act
+        handler.handle(event, METADATA);
+
+        // assert
+        assertThat(handledEventCount()).isEqualTo(1);
+        assertThat(salesCount()).isEqualTo(2);
+        assertThat(hourlyOrderMetric()).isEqualTo(new HourlyOrderMetric(2, 25_000));
+    }
+
     private CatalogEventEnvelope viewedEvent(String eventId) {
         return new CatalogEventEnvelope(
             eventId,
@@ -62,6 +77,26 @@ class ProductMetricEventHandlerIntegrationTest {
             "PRODUCT",
             101L,
             new CatalogEventPayload(101L, 1L, 1L, null),
+            OCCURRED_AT
+        );
+    }
+
+    private CatalogEventEnvelope orderedEvent(String eventId) {
+        return new CatalogEventEnvelope(
+            eventId,
+            CatalogEventType.PRODUCT_ORDERED,
+            "PRODUCT",
+            101L,
+            new CatalogEventPayload(
+                101L,
+                1L,
+                null,
+                null,
+                500L,
+                2,
+                12_500L,
+                25_000L
+            ),
             OCCURRED_AT
         );
     }
@@ -76,5 +111,31 @@ class ProductMetricEventHandlerIntegrationTest {
             Long.class,
             101L
         );
+    }
+
+    private long salesCount() {
+        return jdbcTemplate.queryForObject(
+            "select sales_count from product_metrics where product_id = ?",
+            Long.class,
+            101L
+        );
+    }
+
+    private HourlyOrderMetric hourlyOrderMetric() {
+        return jdbcTemplate.queryForObject(
+            """
+                select order_quantity, order_amount
+                from product_metric_hourly
+                where product_id = ?
+                """,
+            (resultSet, rowNumber) -> new HourlyOrderMetric(
+                resultSet.getLong("order_quantity"),
+                resultSet.getLong("order_amount")
+            ),
+            101L
+        );
+    }
+
+    private record HourlyOrderMetric(long orderQuantity, long orderAmount) {
     }
 }

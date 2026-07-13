@@ -102,6 +102,20 @@ class RankingScoreEventHandlerTest {
                 .containsExactly(new RankingScoreDelta("event-1", -0.2));
         }
 
+        @DisplayName("상품 주문 이벤트를 주문 금액 가중치 점수로 반영한다.")
+        @Test
+        void appliesOrderAmountScore() {
+            // arrange
+            CatalogEventEnvelope event = orderedEvent("event-1", 2, 12_500, 25_000);
+
+            // act
+            handler.handle(List.of(event));
+
+            // assert
+            assertThat(repository.batches().getFirst().deltas())
+                .containsExactly(new RankingScoreDelta("event-1", 1.75));
+        }
+
         @DisplayName("같은 상품과 시간 Window의 이벤트를 하나의 Batch로 묶는다.")
         @Test
         void groupsEventsByProductAndWindow() {
@@ -238,6 +252,31 @@ class RankingScoreEventHandlerTest {
             productId,
             new CatalogEventPayload(productId, 1L, null, delta),
             occurredAt
+        );
+    }
+
+    private CatalogEventEnvelope orderedEvent(
+        String eventId,
+        int quantity,
+        long unitPrice,
+        long totalPrice
+    ) {
+        return new CatalogEventEnvelope(
+            eventId,
+            CatalogEventType.PRODUCT_ORDERED,
+            "PRODUCT",
+            101L,
+            new CatalogEventPayload(
+                101L,
+                1L,
+                null,
+                null,
+                500L,
+                quantity,
+                unitPrice,
+                totalPrice
+            ),
+            ZonedDateTime.parse("2026-07-13T10:30:00+09:00")
         );
     }
 

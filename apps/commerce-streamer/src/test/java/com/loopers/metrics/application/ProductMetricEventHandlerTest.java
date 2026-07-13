@@ -121,6 +121,21 @@ class ProductMetricEventHandlerTest {
             ProductMetricDelta delta = captureDelta();
             assertThat(delta).isEqualTo(new ProductMetricDelta(101L, -1L, 0L, 0L));
         }
+
+        @DisplayName("상품 주문 이벤트면 판매 수량을 주문 수량만큼 증가시킨다.")
+        @Test
+        void increasesSalesCountByOrderQuantity_whenProductOrdered() {
+            // arrange
+            CatalogEventEnvelope event = orderedEvent("event-1");
+            when(eventHandledRepository.saveIfAbsent(any(), any(), any())).thenReturn(true);
+
+            // act
+            handler.handle(event, METADATA);
+
+            // assert
+            ProductMetricDelta delta = captureDelta();
+            assertThat(delta).isEqualTo(new ProductMetricDelta(101L, 0L, 0L, 2L));
+        }
     }
 
     private ProductMetricDelta captureDelta() {
@@ -158,6 +173,26 @@ class ProductMetricEventHandlerTest {
             "PRODUCT",
             101L,
             new CatalogEventPayload(101L, 1L, null, -1),
+            OCCURRED_AT
+        );
+    }
+
+    private CatalogEventEnvelope orderedEvent(String eventId) {
+        return new CatalogEventEnvelope(
+            eventId,
+            CatalogEventType.PRODUCT_ORDERED,
+            "PRODUCT",
+            101L,
+            new CatalogEventPayload(
+                101L,
+                1L,
+                null,
+                null,
+                500L,
+                2,
+                12_500L,
+                25_000L
+            ),
             OCCURRED_AT
         );
     }

@@ -1,6 +1,7 @@
 package com.loopers.ranking.application;
 
 import com.loopers.metrics.application.CatalogEventEnvelope;
+import com.loopers.metrics.application.ProductOrderEventData;
 import com.loopers.ranking.RankingExpirationPolicy;
 import com.loopers.ranking.RankingScorePolicy;
 import com.loopers.ranking.RankingWindow;
@@ -50,6 +51,7 @@ public class RankingScoreEventHandler {
         return switch (event.eventType()) {
             case PRODUCT_VIEWED -> scorePolicy.viewScore();
             case PRODUCT_LIKED, PRODUCT_UNLIKED -> scorePolicy.likeScore(requiredDelta(event));
+            case PRODUCT_ORDERED -> scorePolicy.orderScore(ProductOrderEventData.from(event).totalPrice());
         };
     }
 
