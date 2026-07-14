@@ -17,6 +17,7 @@ import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.JobParametersInvalidException;
+import org.springframework.batch.core.repository.JobInstanceAlreadyCompleteException;
 import org.springframework.batch.test.JobLauncherTestUtils;
 import org.springframework.batch.test.JobRepositoryTestUtils;
 import org.springframework.batch.test.context.SpringBatchTest;
@@ -95,6 +96,48 @@ class RankingCarryOverJobE2ETest {
                 () -> assertThat(execution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED),
                 () -> assertThat(score(targetKey, "101")).isCloseTo(1.0, offset(1.0e-10)),
                 () -> assertThat(score(targetKey, "202")).isCloseTo(2.5, offset(1.0e-10))
+            );
+        }
+
+        @DisplayName("완료한 targetDate로 다시 실행하면 중복 실행을 거부한다")
+        @Test
+        void rejectsRelaunch_whenTargetDateJobIsAlreadyComplete() throws Exception {
+            // arrange
+            String sourceKey = RankingRedisKey.daily(SOURCE_DATE);
+            masterRedisTemplate.opsForZSet().add(sourceKey, "101", 10.0);
+            JobParameters jobParameters = jobParameters(TARGET_DATE_PARAMETER);
+            JobExecution completedExecution = jobLauncherTestUtils.launchJob(jobParameters);
+            assertThat(completedExecution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED);
+
+            // act & assert
+            assertThatThrownBy(() -> jobLauncherTestUtils.launchJob(jobParameters))
+                .isInstanceOf(JobInstanceAlreadyCompleteException.class);
+        }
+
+        @DisplayName("Redis 오류로 실패하면 같은 targetDate JobInstance를 재시작할 수 있다")
+        @Test
+        void restartsSameJobInstance_afterRedisFailure() throws Exception {
+            // arrange
+            String sourceKey = RankingRedisKey.daily(SOURCE_DATE);
+            String targetKey = RankingRedisKey.daily(TARGET_DATE);
+            JobParameters jobParameters = jobParameters(TARGET_DATE_PARAMETER);
+            masterRedisTemplate.opsForValue().set(sourceKey, "invalid-type");
+            JobExecution failedExecution = jobLauncherTestUtils.launchJob(jobParameters);
+            assertThat(failedExecution.getExitStatus().getExitCode())
+                .isEqualTo(ExitStatus.FAILED.getExitCode());
+
+            masterRedisTemplate.delete(sourceKey);
+            masterRedisTemplate.opsForZSet().add(sourceKey, "101", 10.0);
+
+            // act
+            JobExecution restartedExecution = jobLauncherTestUtils.launchJob(jobParameters);
+
+            // assert
+            assertAll(
+                () -> assertThat(restartedExecution.getJobInstance())
+                    .isEqualTo(failedExecution.getJobInstance()),
+                () -> assertThat(restartedExecution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED),
+                () -> assertThat(score(targetKey, "101")).isCloseTo(1.0, offset(1.0e-10))
             );
         }
 
