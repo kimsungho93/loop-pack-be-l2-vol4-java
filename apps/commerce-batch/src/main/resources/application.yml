@@ -17,6 +17,11 @@ spring:
     jdbc:
       initialize-schema: never
 
+commerce:
+  ranking:
+    cold-start:
+      carry-over-rate: 0.1
+
 management:
   health:
     defaults:
