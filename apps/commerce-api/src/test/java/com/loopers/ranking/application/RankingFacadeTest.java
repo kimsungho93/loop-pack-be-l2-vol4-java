@@ -2,6 +2,8 @@ package com.loopers.ranking.application;
 
 import com.loopers.product.application.ProductListInfo;
 import com.loopers.product.application.ProductListQuery;
+import com.loopers.shared.error.CoreException;
+import com.loopers.shared.error.ErrorType;
 import com.loopers.shared.pagination.PageQuery;
 import com.loopers.shared.pagination.PageResult;
 import org.junit.jupiter.api.DisplayName;
@@ -11,11 +13,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.RedisConnectionFailureException;
 
 import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -32,6 +36,9 @@ class RankingFacadeTest {
 
     @Mock
     private ProductListQuery productListQuery;
+
+    @Mock
+    private RankingMetrics rankingMetrics;
 
     @InjectMocks
     private RankingFacade rankingFacade;
@@ -104,6 +111,23 @@ class RankingFacadeTest {
 
             // assert
             assertThat(result.content()).isEmpty();
+            verifyNoInteractions(productListQuery);
+        }
+
+        @DisplayName("Redis Ranking 조회에 실패하면 503 Service Unavailable 예외를 반환한다")
+        @Test
+        void throwsServiceUnavailable_whenRedisRankingLookupFails() {
+            // arrange
+            PageQuery pageQuery = new PageQuery(0, 20);
+            when(rankingService.getDailyRanking(RANKING_DATE, pageQuery))
+                .thenThrow(new RedisConnectionFailureException("redis down"));
+
+            // act & assert
+            assertThatThrownBy(() -> rankingFacade.getDailyRankings(RANKING_DATE, 0, 20))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType")
+                .isEqualTo(ErrorType.SERVICE_UNAVAILABLE);
+            verify(rankingMetrics).recordPageLookupFailure();
             verifyNoInteractions(productListQuery);
         }
     }
