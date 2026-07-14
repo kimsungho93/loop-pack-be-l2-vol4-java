@@ -10,6 +10,7 @@ import com.loopers.product.domain.Product;
 import com.loopers.product.domain.ProductService;
 import com.loopers.product.infrastructure.ProductDetailCacheProperties;
 import com.loopers.product.infrastructure.ProductListCacheProperties;
+import com.loopers.ranking.RankingRedisKey;
 import com.loopers.stock.domain.ProductStockService;
 import com.loopers.shared.presentation.ApiResponse;
 import com.loopers.shared.presentation.PageResponse;
@@ -32,6 +33,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,6 +62,7 @@ class ProductV1ApiE2ETest {
     private final RedisCleanUp redisCleanUp;
     private final JdbcTemplate jdbcTemplate;
     private final RedisTemplate<String, String> redisTemplate;
+    private final Clock clock;
 
     @Autowired
     ProductV1ApiE2ETest(
@@ -74,7 +78,8 @@ class ProductV1ApiE2ETest {
         DatabaseCleanUp databaseCleanUp,
         RedisCleanUp redisCleanUp,
         JdbcTemplate jdbcTemplate,
-        @Qualifier(RedisConfig.REDIS_TEMPLATE_MASTER) RedisTemplate<String, String> redisTemplate
+        @Qualifier(RedisConfig.REDIS_TEMPLATE_MASTER) RedisTemplate<String, String> redisTemplate,
+        Clock clock
     ) {
         this.testRestTemplate = testRestTemplate;
         this.brandService = brandService;
@@ -89,6 +94,7 @@ class ProductV1ApiE2ETest {
         this.redisCleanUp = redisCleanUp;
         this.jdbcTemplate = jdbcTemplate;
         this.redisTemplate = redisTemplate;
+        this.clock = clock;
     }
 
     @AfterEach
@@ -115,10 +121,10 @@ class ProductV1ApiE2ETest {
             productStockService.createProductStock(product.getId(), 10);
 
             // act
-            ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> response = getProduct(product.getId());
+            ResponseEntity<ApiResponse<ProductV1Dto.ProductDetailResponse>> response = getProduct(product.getId());
 
             // assert
-            ProductV1Dto.ProductResponse data = response.getBody().data();
+            ProductV1Dto.ProductDetailResponse data = response.getBody().data();
             assertAll(
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(data.id()).isEqualTo(product.getId()),
@@ -128,7 +134,30 @@ class ProductV1ApiE2ETest {
                 () -> assertThat(data.name()).isEqualTo("아이폰 16 Pro"),
                 () -> assertThat(data.description()).isEqualTo("강력한 성능과 정교한 카메라 경험을 제공하는 스마트폰"),
                 () -> assertThat(data.price()).isEqualTo(1_550_000L),
-                () -> assertThat(data.likeCount()).isZero()
+                () -> assertThat(data.likeCount()).isZero(),
+                () -> assertThat(data.rank()).isNull()
+            );
+        }
+
+        @DisplayName("상품이 오늘 Ranking에 있으면 1-based 순위를 포함한다")
+        @Test
+        void returnsTodayRank_whenProductIsRanked() {
+            // arrange
+            Brand brand = brandService.createBrand("애플", "기술과 디자인으로 일상을 새롭게 만드는 브랜드");
+            Product product = createProduct(brand, "아이폰 16 Pro", 1_550_000L, 10);
+            redisTemplate.opsForZSet().add(
+                RankingRedisKey.daily(LocalDate.now(clock)),
+                String.valueOf(product.getId()),
+                10.0
+            );
+
+            // act
+            ResponseEntity<ApiResponse<ProductV1Dto.ProductDetailResponse>> response = getProduct(product.getId());
+
+            // assert
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
+                () -> assertThat(response.getBody().data().rank()).isEqualTo(1L)
             );
         }
 
@@ -141,10 +170,10 @@ class ProductV1ApiE2ETest {
             changeSummaryLikeCount(product.getId(), 7);
 
             // act
-            ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> response = getProduct(product.getId());
+            ResponseEntity<ApiResponse<ProductV1Dto.ProductDetailResponse>> response = getProduct(product.getId());
 
             // assert
-            ProductV1Dto.ProductResponse data = response.getBody().data();
+            ProductV1Dto.ProductDetailResponse data = response.getBody().data();
             assertAll(
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(data.id()).isEqualTo(product.getId()),
@@ -163,10 +192,10 @@ class ProductV1ApiE2ETest {
             changeSummaryLikeCount(product.getId(), 11);
 
             // act
-            ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> response = getProduct(product.getId());
+            ResponseEntity<ApiResponse<ProductV1Dto.ProductDetailResponse>> response = getProduct(product.getId());
 
             // assert
-            ProductV1Dto.ProductResponse data = response.getBody().data();
+            ProductV1Dto.ProductDetailResponse data = response.getBody().data();
             assertAll(
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(data.id()).isEqualTo(product.getId()),
@@ -183,7 +212,7 @@ class ProductV1ApiE2ETest {
             changeSummaryLikeCount(product.getId(), 7);
 
             // act
-            ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> response = getProduct(product.getId());
+            ResponseEntity<ApiResponse<ProductV1Dto.ProductDetailResponse>> response = getProduct(product.getId());
 
             // assert
             String cacheKey = productDetailCacheKey(product.getId());
@@ -192,6 +221,7 @@ class ProductV1ApiE2ETest {
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(redisTemplate.hasKey(cacheKey)).isTrue(),
                 () -> assertThat(redisTemplate.opsForValue().get(cacheKey)).contains("\"likeCount\":7"),
+                () -> assertThat(redisTemplate.opsForValue().get(cacheKey)).doesNotContain("\"rank\""),
                 () -> assertThat(ttlSeconds).isBetween(
                     1L,
                     productDetailCacheProperties.ttlSeconds() + productDetailCacheProperties.jitterSeconds()
@@ -206,7 +236,7 @@ class ProductV1ApiE2ETest {
             Long missingProductId = 999_999L;
 
             // act
-            ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> response = getProduct(missingProductId);
+            ResponseEntity<ApiResponse<ProductV1Dto.ProductDetailResponse>> response = getProduct(missingProductId);
 
             // assert
             String cacheKey = productDetailCacheKey(missingProductId);
@@ -227,7 +257,7 @@ class ProductV1ApiE2ETest {
             productService.deleteProduct(product.getId());
 
             // act
-            ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> response = getProduct(product.getId());
+            ResponseEntity<ApiResponse<ProductV1Dto.ProductDetailResponse>> response = getProduct(product.getId());
 
             // assert
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -242,7 +272,7 @@ class ProductV1ApiE2ETest {
             brandService.deleteBrand(brand.getId());
 
             // act
-            ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> response = getProduct(product.getId());
+            ResponseEntity<ApiResponse<ProductV1Dto.ProductDetailResponse>> response = getProduct(product.getId());
 
             // assert
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -561,8 +591,8 @@ class ProductV1ApiE2ETest {
         );
     }
 
-    private ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> getProduct(Long productId) {
-        ParameterizedTypeReference<ApiResponse<ProductV1Dto.ProductResponse>> responseType = new ParameterizedTypeReference<>() {};
+    private ResponseEntity<ApiResponse<ProductV1Dto.ProductDetailResponse>> getProduct(Long productId) {
+        ParameterizedTypeReference<ApiResponse<ProductV1Dto.ProductDetailResponse>> responseType = new ParameterizedTypeReference<>() {};
         return testRestTemplate.exchange(
             ENDPOINT_PRODUCT_DETAIL,
             HttpMethod.GET,

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -103,12 +104,50 @@ class RankingServiceTest {
         }
     }
 
+    @DisplayName("상품의 일간 순위를 조회할 때")
+    @Nested
+    class GetDailyRank {
+
+        @DisplayName("0-based Redis 위치를 1-based 순위로 변환한다")
+        @Test
+        void convertsRedisPositionToOneBasedRank() {
+            // arrange
+            rankingQuery.willReturnRank(0L);
+
+            // act
+            Optional<Long> result = rankingService.getDailyRank(RANKING_DATE, 205L);
+
+            // assert
+            assertAll(
+                () -> assertThat(rankingQuery.rankDate()).isEqualTo(RANKING_DATE),
+                () -> assertThat(rankingQuery.productId()).isEqualTo(205L),
+                () -> assertThat(result).contains(1L)
+            );
+        }
+
+        @DisplayName("Ranking에 상품이 없으면 빈 순위를 반환한다")
+        @Test
+        void returnsEmpty_whenProductIsNotRanked() {
+            // arrange
+            rankingQuery.willReturnEmptyRank();
+
+            // act
+            Optional<Long> result = rankingService.getDailyRank(RANKING_DATE, 205L);
+
+            // assert
+            assertThat(result).isEmpty();
+        }
+    }
+
     private static final class FakeRankingQuery implements RankingQuery {
 
         private RankingEntries result;
         private LocalDate date;
         private long start;
         private long end;
+        private Optional<Long> rank = Optional.empty();
+        private LocalDate rankDate;
+        private Long productId;
 
         @Override
         public RankingEntries findDaily(LocalDate date, long start, long end) {
@@ -118,8 +157,23 @@ class RankingServiceTest {
             return result;
         }
 
+        @Override
+        public Optional<Long> findDailyRank(LocalDate date, Long productId) {
+            this.rankDate = date;
+            this.productId = productId;
+            return rank;
+        }
+
         void willReturn(RankingEntries result) {
             this.result = result;
+        }
+
+        void willReturnRank(long rank) {
+            this.rank = Optional.of(rank);
+        }
+
+        void willReturnEmptyRank() {
+            this.rank = Optional.empty();
         }
 
         LocalDate date() {
@@ -132,6 +186,14 @@ class RankingServiceTest {
 
         long end() {
             return end;
+        }
+
+        LocalDate rankDate() {
+            return rankDate;
+        }
+
+        Long productId() {
+            return productId;
         }
     }
 }

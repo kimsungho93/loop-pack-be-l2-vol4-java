@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import java.time.LocalDate;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -81,6 +82,37 @@ class RedisRankingQueryIntegrationTest {
                 () -> assertThat(result.productIds()).isEmpty(),
                 () -> assertThat(result.totalElements()).isZero()
             );
+        }
+    }
+
+    @DisplayName("상품의 일간 Ranking 위치를 조회할 때")
+    @Nested
+    class FindDailyRank {
+
+        @DisplayName("Score 내림차순 기준의 0-based 위치를 반환한다")
+        @Test
+        void returnsZeroBasedPosition() {
+            // arrange
+            String key = RankingRedisKey.daily(RANKING_DATE);
+            masterRedisTemplate.opsForZSet().add(key, "101", 1.0);
+            masterRedisTemplate.opsForZSet().add(key, "205", 3.0);
+            masterRedisTemplate.opsForZSet().add(key, "309", 2.0);
+
+            // act
+            Optional<Long> result = rankingQuery.findDailyRank(RANKING_DATE, 309L);
+
+            // assert
+            assertThat(result).contains(1L);
+        }
+
+        @DisplayName("상품이 Ranking에 없으면 빈 위치를 반환한다")
+        @Test
+        void returnsEmpty_whenProductIsNotRanked() {
+            // act
+            Optional<Long> result = rankingQuery.findDailyRank(RANKING_DATE, 999L);
+
+            // assert
+            assertThat(result).isEmpty();
         }
     }
 }

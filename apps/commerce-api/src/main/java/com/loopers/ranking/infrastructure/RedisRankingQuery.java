@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @RequiredArgsConstructor
@@ -24,6 +25,15 @@ public class RedisRankingQuery implements RankingQuery {
         Long totalElements = redisTemplate.opsForZSet().zCard(key);
 
         return new RankingEntries(toProductIds(members), totalElements == null ? 0 : totalElements);
+    }
+
+    @Override
+    public Optional<Long> findDailyRank(LocalDate date, Long productId) {
+        Long position = redisTemplate.opsForZSet().reverseRank(
+            RankingRedisKey.daily(date),
+            String.valueOf(productId)
+        );
+        return Optional.ofNullable(position);
     }
 
     private List<Long> toProductIds(Set<String> members) {

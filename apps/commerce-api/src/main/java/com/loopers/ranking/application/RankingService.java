@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.IntStream;
 
 @RequiredArgsConstructor
@@ -30,6 +31,11 @@ public class RankingService {
             pageQuery.page() == 0,
             totalPages == 0 || pageQuery.page() >= totalPages - 1
         );
+    }
+
+    public Optional<Long> getDailyRank(LocalDate date, Long productId) {
+        return rankingQuery.findDailyRank(date, productId)
+            .map(position -> position + 1);
     }
 
     private List<RankingPosition> positions(List<Long> productIds, long start) {

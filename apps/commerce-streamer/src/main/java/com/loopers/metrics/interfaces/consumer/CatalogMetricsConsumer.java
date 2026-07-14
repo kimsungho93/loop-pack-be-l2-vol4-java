@@ -32,6 +32,7 @@ public class CatalogMetricsConsumer {
         List<ConsumerRecord<String, byte[]>> records,
         Acknowledgment acknowledgment
     ) {
+        // TODO: Aggregate unseen metric deltas by product/window and persist handled events and SOT in one batch transaction.
         for (int index = 0; index < records.size(); index++) {
             ConsumerRecord<String, byte[]> record = records.get(index);
             try {
