@@ -22,6 +22,7 @@ spring:
       - jpa.yml
       - redis.yml
       - kafka.yml
+      - ranking.yml
       - logging.yml
       - monitoring.yml
 
@@ -34,11 +35,6 @@ commerce:
     catalog:
       group-id: catalog-ranking
       auto-startup: true
-    score:
-      view-weight: 0.1
-      like-weight: 0.2
-      order-weight: 0.7
-      order-amount-unit: 10000
 
 ---
 spring:

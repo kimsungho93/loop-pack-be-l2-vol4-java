@@ -1,0 +1,7 @@
+commerce:
+  ranking:
+    score:
+      view-weight: 0.1
+      like-weight: 0.2
+      order-weight: 0.7
+      order-amount-unit: 10000

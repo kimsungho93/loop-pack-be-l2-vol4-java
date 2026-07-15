@@ -1,12 +1,12 @@
-package com.loopers.ranking.infrastructure;
+package com.loopers.ranking.config;
 
 import com.loopers.ranking.RankingScorePolicy;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.time.Clock;
-
 @Configuration
+@EnableConfigurationProperties(RankingScoreProperties.class)
 public class RankingScoreConfig {
 
     @Bean
@@ -17,10 +17,5 @@ public class RankingScoreConfig {
             properties.orderWeight(),
             properties.orderAmountUnit()
         );
-    }
-
-    @Bean
-    public Clock rankingClock() {
-        return Clock.systemUTC();
     }
 }
