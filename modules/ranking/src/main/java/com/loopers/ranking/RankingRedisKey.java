@@ -26,6 +26,10 @@ public final class RankingRedisKey {
         return "ranking:all:{%s}:carry-over:temp".formatted(format(date));
     }
 
+    public static String rebuildTemp(LocalDate date, long runId) {
+        return "ranking:rebuild:{%s}:%d".formatted(format(date), runId);
+    }
+
     private static String format(LocalDate date) {
         return date.format(DATE_FORMATTER);
     }

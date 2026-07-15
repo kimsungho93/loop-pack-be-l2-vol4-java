@@ -42,4 +42,12 @@ class RankingRedisKeyTest {
         assertThat(RankingRedisKey.carryOverTemp(RANKING_DATE))
             .isEqualTo("ranking:all:{20260713}:carry-over:temp");
     }
+
+    @DisplayName("Rebuild 임시 Key와 대상 Key가 같은 날짜 Hash Tag를 사용한다.")
+    @Test
+    void createsRebuildTempKey() {
+        // act & assert
+        assertThat(RankingRedisKey.rebuildTemp(RANKING_DATE, 42L))
+            .isEqualTo("ranking:rebuild:{20260713}:42");
+    }
 }
