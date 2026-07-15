@@ -55,9 +55,9 @@ class JdbcRankingRebuildMetricRepositoryIntegrationTest {
         jdbcTemplate.update("delete from product_metric_hourly");
     }
 
-    @DisplayName("대상 날짜의 시간별 Raw Metric을 상품별 일간 Metric으로 합산한다")
+    @DisplayName("대상 날짜까지의 시간별 Raw Metric을 날짜와 상품별 일간 Metric으로 합산한다")
     @Test
-    void aggregatesHourlyMetricsByProduct_forRankingDate() {
+    void aggregatesHourlyMetricsByDateAndProduct_throughRankingDate() {
         // arrange
         insertMetric(RANKING_DATE.atStartOfDay(), 101L, 1, 2, 3, 10_000);
         insertMetric(RANKING_DATE.atTime(23, 0), 101L, 4, -1, 2, 25_000);
@@ -66,12 +66,13 @@ class JdbcRankingRebuildMetricRepositoryIntegrationTest {
         insertMetric(RANKING_DATE.plusDays(1).atStartOfDay(), 404L, 100, 100, 100, 100_000);
 
         // act
-        List<RankingRebuildMetric> metrics = repository.findAllByDate(RANKING_DATE);
+        List<RankingRebuildMetric> metrics = repository.findAllThrough(RANKING_DATE);
 
         // assert
         assertThat(metrics).containsExactlyInAnyOrder(
-            new RankingRebuildMetric(101L, 5, 1, 35_000),
-            new RankingRebuildMetric(202L, 3, 1, 15_000)
+            new RankingRebuildMetric(RANKING_DATE.minusDays(1), 303L, 100, 100, 100_000),
+            new RankingRebuildMetric(RANKING_DATE, 101L, 5, 1, 35_000),
+            new RankingRebuildMetric(RANKING_DATE, 202L, 3, 1, 15_000)
         );
     }
 

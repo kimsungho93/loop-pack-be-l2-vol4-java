@@ -5,5 +5,5 @@ import java.util.List;
 
 public interface RankingRebuildMetricRepository {
 
-    List<RankingRebuildMetric> findAllByDate(LocalDate rankingDate);
+    List<RankingRebuildMetric> findAllThrough(LocalDate rankingDate);
 }

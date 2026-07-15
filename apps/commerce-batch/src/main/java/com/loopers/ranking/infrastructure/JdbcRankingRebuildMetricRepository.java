@@ -17,28 +17,29 @@ public class JdbcRankingRebuildMetricRepository implements RankingRebuildMetricR
     private final JdbcTemplate jdbcTemplate;
 
     @Override
-    public List<RankingRebuildMetric> findAllByDate(LocalDate rankingDate) {
-        LocalDateTime windowStart = rankingDate.atStartOfDay();
+    public List<RankingRebuildMetric> findAllThrough(LocalDate rankingDate) {
         LocalDateTime windowEnd = rankingDate.plusDays(1).atStartOfDay();
 
         return jdbcTemplate.query(
             """
                 select
+                    date(window_start) as metric_date,
                     product_id,
                     sum(view_count) as view_count,
                     sum(like_delta) as like_delta,
                     sum(order_amount) as order_amount
                 from product_metric_hourly
-                where window_start >= ? and window_start < ?
-                group by product_id
+                where window_start < ?
+                group by date(window_start), product_id
+                order by metric_date, product_id
                 """,
             (resultSet, rowNumber) -> new RankingRebuildMetric(
+                resultSet.getDate("metric_date").toLocalDate(),
                 resultSet.getLong("product_id"),
                 resultSet.getLong("view_count"),
                 resultSet.getLong("like_delta"),
                 resultSet.getLong("order_amount")
             ),
-            windowStart,
             windowEnd
         );
     }

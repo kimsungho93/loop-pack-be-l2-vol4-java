@@ -29,16 +29,17 @@ class RankingRebuildServiceTest {
     @BeforeEach
     void setUp() {
         RankingScorePolicy scorePolicy = new RankingScorePolicy(0.1, 0.2, 0.7, 10_000);
-        service = new RankingRebuildService(metricRepository, scorePolicy);
+        RankingColdStartProperties coldStartProperties = new RankingColdStartProperties(0.1);
+        service = new RankingRebuildService(metricRepository, scorePolicy, coldStartProperties);
     }
 
     @DisplayName("일간 Raw Metric을 실시간 적재와 동일한 Weight의 절대 Score로 계산한다")
     @Test
     void calculatesAbsoluteScores_fromDailyMetrics() {
         // arrange
-        when(metricRepository.findAllByDate(RANKING_DATE)).thenReturn(List.of(
-            new RankingRebuildMetric(101L, 5, 1, 35_000),
-            new RankingRebuildMetric(202L, 2, -1, 10_000)
+        when(metricRepository.findAllThrough(RANKING_DATE)).thenReturn(List.of(
+            new RankingRebuildMetric(RANKING_DATE, 101L, 5, 1, 35_000),
+            new RankingRebuildMetric(RANKING_DATE, 202L, 2, -1, 10_000)
         ));
 
         // act
@@ -51,6 +52,49 @@ class RankingRebuildServiceTest {
             () -> assertThat(scores.get(0).score()).isCloseTo(3.15, offset(1.0e-10)),
             () -> assertThat(scores.get(1).productId()).isEqualTo(202L),
             () -> assertThat(scores.get(1).score()).isCloseTo(0.7, offset(1.0e-10))
+        );
+    }
+
+    @DisplayName("최초 SOT 날짜부터 대상 날짜까지 Raw Score와 Carry-Over를 순서대로 누적한다")
+    @Test
+    void replaysRawScoresAndCarryOverThroughRankingDate() {
+        // arrange
+        LocalDate targetDate = RANKING_DATE.plusDays(1);
+        when(metricRepository.findAllThrough(targetDate)).thenReturn(List.of(
+            new RankingRebuildMetric(targetDate, 101L, 10, 0, 0),
+            new RankingRebuildMetric(RANKING_DATE.minusDays(1), 101L, 100, 0, 0),
+            new RankingRebuildMetric(RANKING_DATE, 101L, 20, 0, 0)
+        ));
+
+        // act
+        List<RankingRebuildScore> scores = service.calculateScores(targetDate);
+
+        // assert
+        assertAll(
+            () -> assertThat(scores).hasSize(1),
+            () -> assertThat(scores.getFirst().productId()).isEqualTo(101L),
+            () -> assertThat(scores.getFirst().score()).isCloseTo(1.3, offset(1.0e-10))
+        );
+    }
+
+    @DisplayName("이벤트가 없는 날짜도 Carry-Over 비율만큼 감쇠하여 대상 날짜 Score를 재생한다")
+    @Test
+    void replaysCarryOverThroughDatesWithoutMetrics() {
+        // arrange
+        LocalDate targetDate = RANKING_DATE.plusDays(1);
+        when(metricRepository.findAllThrough(targetDate)).thenReturn(List.of(
+            new RankingRebuildMetric(targetDate, 101L, 10, 0, 0),
+            new RankingRebuildMetric(RANKING_DATE.minusDays(1), 101L, 100, 0, 0)
+        ));
+
+        // act
+        List<RankingRebuildScore> scores = service.calculateScores(targetDate);
+
+        // assert
+        assertAll(
+            () -> assertThat(scores).hasSize(1),
+            () -> assertThat(scores.getFirst().productId()).isEqualTo(101L),
+            () -> assertThat(scores.getFirst().score()).isCloseTo(1.1, offset(1.0e-10))
         );
     }
 }
