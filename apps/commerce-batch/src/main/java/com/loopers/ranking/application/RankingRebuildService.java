@@ -16,8 +16,14 @@ import java.util.TreeMap;
 public class RankingRebuildService {
 
     private final RankingRebuildMetricRepository metricRepository;
+    private final RankingRebuildRepository rebuildRepository;
     private final RankingScorePolicy scorePolicy;
     private final RankingColdStartProperties coldStartProperties;
+
+    public long rebuild(LocalDate rankingDate, long runId) {
+        List<RankingRebuildScore> scores = calculateScores(rankingDate);
+        return rebuildRepository.replace(rankingDate, runId, scores);
+    }
 
     public List<RankingRebuildScore> calculateScores(LocalDate rankingDate) {
         Map<Long, AccumulatedScore> scoresByProduct = new TreeMap<>();
