@@ -3,6 +3,7 @@ package com.loopers.metrics.interfaces.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.confg.kafka.KafkaConfig;
 import com.loopers.metrics.application.CatalogEventEnvelope;
+import com.loopers.metrics.application.CatalogMetricsMetrics;
 import com.loopers.metrics.application.EventHandlingMetadata;
 import com.loopers.metrics.application.ProductMetricEventCommand;
 import com.loopers.metrics.application.ProductMetricEventHandler;
@@ -23,6 +24,7 @@ public class CatalogMetricsConsumer {
 
     private final ProductMetricEventHandler productMetricEventHandler;
     private final ObjectMapper objectMapper;
+    private final CatalogMetricsMetrics catalogMetricsMetrics;
 
     @KafkaListener(
         topics = "${commerce.metrics.catalog.topic-name:catalog-events}",
@@ -31,6 +33,22 @@ public class CatalogMetricsConsumer {
         autoStartup = "${commerce.metrics.catalog.auto-startup:true}"
     )
     public void consume(
+        List<ConsumerRecord<String, byte[]>> records,
+        Acknowledgment acknowledgment
+    ) {
+        long startedAt = System.nanoTime();
+        catalogMetricsMetrics.recordBatchRecords(records.size());
+        try {
+            consumeRecords(records, acknowledgment);
+        } catch (RuntimeException exception) {
+            catalogMetricsMetrics.recordBatchFailure();
+            throw exception;
+        } finally {
+            catalogMetricsMetrics.recordBatchDuration(System.nanoTime() - startedAt);
+        }
+    }
+
+    private void consumeRecords(
         List<ConsumerRecord<String, byte[]>> records,
         Acknowledgment acknowledgment
     ) {

@@ -33,6 +33,9 @@ class ProductMetricEventHandlerTest {
     @Mock
     private ProductMetricHourlyRepository productMetricHourlyRepository;
 
+    @Mock
+    private CatalogMetricsMetrics catalogMetricsMetrics;
+
     @InjectMocks
     private ProductMetricEventHandler handler;
 
@@ -254,6 +257,7 @@ class ProductMetricEventHandlerTest {
                     0
                 )
             );
+            verify(catalogMetricsMetrics).recordAggregation(3, 3, 2, 3);
         }
     }
 

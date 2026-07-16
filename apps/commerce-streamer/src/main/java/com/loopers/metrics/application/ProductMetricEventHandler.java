@@ -17,6 +17,7 @@ public class ProductMetricEventHandler {
     private final EventHandledRepository eventHandledRepository;
     private final ProductMetricsRepository productMetricsRepository;
     private final ProductMetricHourlyRepository productMetricHourlyRepository;
+    private final CatalogMetricsMetrics catalogMetricsMetrics;
 
     @Transactional
     public void handle(CatalogEventEnvelope event, EventHandlingMetadata metadata) {
@@ -32,6 +33,7 @@ public class ProductMetricEventHandler {
         ZonedDateTime handledAt = ZonedDateTime.now();
         Map<Long, ProductMetricDelta> metricDeltas = new LinkedHashMap<>();
         Map<ProductMetricHourlyGroup, ProductMetricHourlyDelta> hourlyDeltas = new LinkedHashMap<>();
+        int newEventCount = 0;
 
         for (ProductMetricEventCommand command : commands) {
             boolean saved = eventHandledRepository.saveIfAbsent(
@@ -42,6 +44,7 @@ public class ProductMetricEventHandler {
             if (!saved) {
                 continue;
             }
+            newEventCount++;
 
             ProductMetricDelta metricDelta = command.metricDelta();
             metricDeltas.merge(metricDelta.productId(), metricDelta, ProductMetricDelta::plus);
@@ -60,6 +63,12 @@ public class ProductMetricEventHandler {
         if (!hourlyDeltas.isEmpty()) {
             productMetricHourlyRepository.addAll(List.copyOf(hourlyDeltas.values()), handledAt);
         }
+        catalogMetricsMetrics.recordAggregation(
+            commands.size(),
+            newEventCount,
+            metricDeltas.size(),
+            hourlyDeltas.size()
+        );
     }
 
     private record ProductMetricHourlyGroup(

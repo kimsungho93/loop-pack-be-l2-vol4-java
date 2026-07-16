@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.loopers.metrics.application.CatalogEventEnvelope;
 import com.loopers.metrics.application.CatalogEventPayload;
 import com.loopers.metrics.application.CatalogEventType;
+import com.loopers.metrics.application.CatalogMetricsMetrics;
 import com.loopers.metrics.application.EventHandlingMetadata;
 import com.loopers.metrics.application.ProductMetricEventCommand;
 import com.loopers.metrics.application.ProductMetricEventHandler;
@@ -29,6 +30,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,6 +46,9 @@ class CatalogMetricsConsumerTest {
     @Mock
     private Acknowledgment acknowledgment;
 
+    @Mock
+    private CatalogMetricsMetrics catalogMetricsMetrics;
+
     private CatalogMetricsConsumer consumer;
 
     private ObjectMapper objectMapper;
@@ -54,7 +59,7 @@ class CatalogMetricsConsumerTest {
             .findAndRegisterModules()
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-        consumer = new CatalogMetricsConsumer(productMetricEventHandler, objectMapper);
+        consumer = new CatalogMetricsConsumer(productMetricEventHandler, objectMapper, catalogMetricsMetrics);
     }
 
     @DisplayName("catalog metrics 이벤트를 소비할 때")
@@ -88,6 +93,9 @@ class CatalogMetricsConsumerTest {
                     new EventHandlingMetadata("catalog-events", 1, 21L)
                 );
             verify(acknowledgment).acknowledge();
+            verify(catalogMetricsMetrics).recordBatchRecords(2);
+            verify(catalogMetricsMetrics).recordBatchDuration(anyLong());
+            verify(catalogMetricsMetrics, never()).recordBatchFailure();
         }
 
         @DisplayName("처리 중 실패하면 ack 하지 않는다.")
@@ -131,6 +139,8 @@ class CatalogMetricsConsumerTest {
                 .extracting(command -> command.event().eventId())
                 .containsExactly("event-1");
             verify(acknowledgment, never()).acknowledge();
+            verify(catalogMetricsMetrics).recordBatchFailure();
+            verify(catalogMetricsMetrics).recordBatchDuration(anyLong());
         }
 
         @DisplayName("배치 중간 이벤트가 Metric 규칙에 맞지 않으면 실제 Record index를 전달한다.")
