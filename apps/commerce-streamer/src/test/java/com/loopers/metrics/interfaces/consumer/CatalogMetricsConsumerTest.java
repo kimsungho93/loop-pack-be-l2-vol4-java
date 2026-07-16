@@ -7,6 +7,7 @@ import com.loopers.metrics.application.CatalogEventEnvelope;
 import com.loopers.metrics.application.CatalogEventPayload;
 import com.loopers.metrics.application.CatalogEventType;
 import com.loopers.metrics.application.EventHandlingMetadata;
+import com.loopers.metrics.application.ProductMetricEventCommand;
 import com.loopers.metrics.application.ProductMetricEventHandler;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,28 +61,32 @@ class CatalogMetricsConsumerTest {
     @Nested
     class Consume {
 
-        @DisplayName("배치의 모든 이벤트를 처리한 뒤 ack 한다.")
+        @DisplayName("배치의 모든 이벤트를 한 번에 처리한 뒤 ack 한다.")
         @Test
         void acknowledgesAfterHandlingAllRecords() throws IOException {
             // arrange
-            CatalogEventEnvelope event = event("event-1");
-            ConsumerRecord<String, byte[]> record = record(event, 1, 20L);
+            CatalogEventEnvelope first = event("event-1");
+            CatalogEventEnvelope second = event("event-2");
 
             // act
-            consumer.consume(List.of(record), acknowledgment);
+            consumer.consume(
+                List.of(record(first, 1, 20L), record(second, 1, 21L)),
+                acknowledgment
+            );
 
             // assert
-            ArgumentCaptor<CatalogEventEnvelope> eventCaptor = ArgumentCaptor.forClass(CatalogEventEnvelope.class);
-            ArgumentCaptor<EventHandlingMetadata> metadataCaptor = ArgumentCaptor.forClass(EventHandlingMetadata.class);
-            verify(productMetricEventHandler).handle(eventCaptor.capture(), metadataCaptor.capture());
-            CatalogEventEnvelope actual = eventCaptor.getValue();
-            assertThat(actual.eventId()).isEqualTo(event.eventId());
-            assertThat(actual.eventType()).isEqualTo(event.eventType());
-            assertThat(actual.aggregateType()).isEqualTo(event.aggregateType());
-            assertThat(actual.aggregateId()).isEqualTo(event.aggregateId());
-            assertThat(actual.payload()).isEqualTo(event.payload());
-            assertThat(actual.occurredAt().toInstant()).isEqualTo(event.occurredAt().toInstant());
-            assertThat(metadataCaptor.getValue()).isEqualTo(new EventHandlingMetadata("catalog-events", 1, 20L));
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<ProductMetricEventCommand>> captor = ArgumentCaptor.forClass(List.class);
+            verify(productMetricEventHandler).handleBatch(captor.capture());
+            assertThat(captor.getValue())
+                .extracting(command -> command.event().eventId())
+                .containsExactly("event-1", "event-2");
+            assertThat(captor.getValue())
+                .extracting(ProductMetricEventCommand::metadata)
+                .containsExactly(
+                    new EventHandlingMetadata("catalog-events", 1, 20L),
+                    new EventHandlingMetadata("catalog-events", 1, 21L)
+                );
             verify(acknowledgment).acknowledge();
         }
 
@@ -92,11 +97,13 @@ class CatalogMetricsConsumerTest {
             ConsumerRecord<String, byte[]> record = record(event("event-1"), 1, 20L);
             doThrow(new RuntimeException("db unavailable"))
                 .when(productMetricEventHandler)
-                .handle(any(CatalogEventEnvelope.class), any(EventHandlingMetadata.class));
+                .handleBatch(any());
 
             // act & assert
             assertThatThrownBy(() -> consumer.consume(List.of(record), acknowledgment))
-                .isInstanceOf(BatchListenerFailedException.class)
+                .isInstanceOfSatisfying(BatchListenerFailedException.class, exception ->
+                    assertThat(exception.getIndex()).isZero()
+                )
                 .hasCauseInstanceOf(RuntimeException.class)
                 .hasRootCauseMessage("db unavailable");
 
@@ -117,7 +124,12 @@ class CatalogMetricsConsumerTest {
                 )
                 .hasCauseInstanceOf(IllegalArgumentException.class);
 
-            verify(productMetricEventHandler).handle(any(CatalogEventEnvelope.class), any(EventHandlingMetadata.class));
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<ProductMetricEventCommand>> captor = ArgumentCaptor.forClass(List.class);
+            verify(productMetricEventHandler).handleBatch(captor.capture());
+            assertThat(captor.getValue())
+                .extracting(command -> command.event().eventId())
+                .containsExactly("event-1");
             verify(acknowledgment, never()).acknowledge();
         }
     }

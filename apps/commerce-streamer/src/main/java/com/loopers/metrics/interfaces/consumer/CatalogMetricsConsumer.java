@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.confg.kafka.KafkaConfig;
 import com.loopers.metrics.application.CatalogEventEnvelope;
 import com.loopers.metrics.application.EventHandlingMetadata;
+import com.loopers.metrics.application.ProductMetricEventCommand;
 import com.loopers.metrics.application.ProductMetricEventHandler;
 import lombok.RequiredArgsConstructor;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -13,6 +14,7 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -32,19 +34,45 @@ public class CatalogMetricsConsumer {
         List<ConsumerRecord<String, byte[]>> records,
         Acknowledgment acknowledgment
     ) {
-        // TODO: Aggregate unseen metric deltas by product/window and persist handled events and SOT in one batch transaction.
+        List<ProductMetricEventCommand> commands = new ArrayList<>(records.size());
         for (int index = 0; index < records.size(); index++) {
             ConsumerRecord<String, byte[]> record = records.get(index);
             try {
-                productMetricEventHandler.handle(
-                    read(record.value()),
-                    new EventHandlingMetadata(record.topic(), record.partition(), record.offset())
-                );
+                commands.add(command(record));
             } catch (RuntimeException exception) {
-                throw new BatchListenerFailedException("Failed to handle catalog event", exception, index);
+                handle(commands);
+                throw new BatchListenerFailedException(
+                    "Failed to read catalog metric event",
+                    exception,
+                    index
+                );
             }
         }
+
+        handle(commands);
         acknowledgment.acknowledge();
+    }
+
+    private ProductMetricEventCommand command(ConsumerRecord<String, byte[]> record) {
+        return new ProductMetricEventCommand(
+            read(record.value()),
+            new EventHandlingMetadata(record.topic(), record.partition(), record.offset())
+        );
+    }
+
+    private void handle(List<ProductMetricEventCommand> commands) {
+        if (commands.isEmpty()) {
+            return;
+        }
+        try {
+            productMetricEventHandler.handleBatch(List.copyOf(commands));
+        } catch (RuntimeException exception) {
+            throw new BatchListenerFailedException(
+                "Failed to handle catalog metric event batch",
+                exception,
+                0
+            );
+        }
     }
 
     private CatalogEventEnvelope read(byte[] value) {
