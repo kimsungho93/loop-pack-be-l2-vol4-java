@@ -1,8 +1,9 @@
 package com.loopers.metrics.application;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 public interface ProductMetricsRepository {
 
-    void add(ProductMetricDelta delta, ZonedDateTime updatedAt);
+    void addAll(List<ProductMetricDelta> deltas, ZonedDateTime updatedAt);
 }

@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,8 +52,8 @@ class ProductMetricHourlyJdbcRepositoryIntegrationTest {
         ProductMetricHourlyDelta second = new ProductMetricHourlyDelta(WINDOW_START, 101L, 4, -1, 2, 10_000);
 
         // act
-        repository.add(first, UPDATED_AT);
-        repository.add(second, UPDATED_AT.plusMinutes(1));
+        repository.addAll(List.of(first), UPDATED_AT);
+        repository.addAll(List.of(second), UPDATED_AT.plusMinutes(1));
 
         // assert
         assertThat(findMetric(WINDOW_START, 101L)).isEqualTo(new HourlyMetric(5, 1, 5, 35_000));
@@ -65,11 +66,32 @@ class ProductMetricHourlyJdbcRepositoryIntegrationTest {
         LocalDateTime nextWindowStart = WINDOW_START.plusHours(1);
 
         // act
-        repository.add(new ProductMetricHourlyDelta(WINDOW_START, 101L, 1, 0, 0, 0), UPDATED_AT);
-        repository.add(new ProductMetricHourlyDelta(nextWindowStart, 101L, 1, 0, 0, 0), UPDATED_AT);
+        repository.addAll(List.of(
+            new ProductMetricHourlyDelta(WINDOW_START, 101L, 1, 0, 0, 0),
+            new ProductMetricHourlyDelta(nextWindowStart, 101L, 1, 0, 0, 0)
+        ), UPDATED_AT);
 
         // assert
         assertThat(metricCount()).isEqualTo(2);
+    }
+
+    @DisplayName("한 번의 Batch로 여러 상품과 시간 Window의 Raw Metric을 저장한다.")
+    @Test
+    void storesMetricsForDifferentProductsAndWindowsInOneBatch() {
+        // arrange
+        LocalDateTime nextWindowStart = WINDOW_START.plusHours(1);
+
+        // act
+        repository.addAll(List.of(
+            new ProductMetricHourlyDelta(WINDOW_START, 101L, 1, 0, 0, 0),
+            new ProductMetricHourlyDelta(WINDOW_START, 202L, 2, 0, 0, 0),
+            new ProductMetricHourlyDelta(nextWindowStart, 101L, 3, 0, 0, 0)
+        ), UPDATED_AT);
+
+        // assert
+        assertThat(metricCount()).isEqualTo(3);
+        assertThat(findMetric(WINDOW_START, 202L)).isEqualTo(new HourlyMetric(2, 0, 0, 0));
+        assertThat(findMetric(nextWindowStart, 101L)).isEqualTo(new HourlyMetric(3, 0, 0, 0));
     }
 
     private HourlyMetric findMetric(LocalDateTime windowStart, Long productId) {

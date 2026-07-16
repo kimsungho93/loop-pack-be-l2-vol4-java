@@ -54,8 +54,12 @@ public class ProductMetricEventHandler {
             hourlyDeltas.merge(hourlyGroup, hourlyDelta, ProductMetricHourlyDelta::plus);
         }
 
-        metricDeltas.values().forEach(delta -> productMetricsRepository.add(delta, handledAt));
-        hourlyDeltas.values().forEach(delta -> productMetricHourlyRepository.add(delta, handledAt));
+        if (!metricDeltas.isEmpty()) {
+            productMetricsRepository.addAll(List.copyOf(metricDeltas.values()), handledAt);
+        }
+        if (!hourlyDeltas.isEmpty()) {
+            productMetricHourlyRepository.addAll(List.copyOf(hourlyDeltas.values()), handledAt);
+        }
     }
 
     private record ProductMetricHourlyGroup(

@@ -15,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -81,15 +82,19 @@ class MetricsJdbcRepositoryIntegrationTest {
         @Test
         void accumulatesProductMetrics() {
             // act
-            productMetricsRepository.add(new ProductMetricDelta(101L, 1, 0, 0), NOW);
-            productMetricsRepository.add(new ProductMetricDelta(101L, 1, 0, 0), NOW);
-            productMetricsRepository.add(new ProductMetricDelta(101L, 0, 1, 0), NOW);
+            productMetricsRepository.addAll(List.of(
+                new ProductMetricDelta(101L, 1, 0, 0),
+                new ProductMetricDelta(101L, 1, 0, 0),
+                new ProductMetricDelta(101L, 0, 1, 0),
+                new ProductMetricDelta(202L, 0, 2, 0)
+            ), NOW);
 
             // assert
             assertAll(
                 () -> assertThat(likeCount(101L)).isEqualTo(2),
                 () -> assertThat(viewCount(101L)).isEqualTo(1),
-                () -> assertThat(salesCount(101L)).isZero()
+                () -> assertThat(salesCount(101L)).isZero(),
+                () -> assertThat(viewCount(202L)).isEqualTo(2)
             );
         }
 
@@ -97,7 +102,10 @@ class MetricsJdbcRepositoryIntegrationTest {
         @Test
         void accumulatesNegativeDelta() {
             // act
-            productMetricsRepository.add(new ProductMetricDelta(101L, -1, 0, 0), NOW);
+            productMetricsRepository.addAll(
+                List.of(new ProductMetricDelta(101L, -1, 0, 0)),
+                NOW
+            );
 
             // assert
             assertThat(likeCount(101L)).isEqualTo(-1);

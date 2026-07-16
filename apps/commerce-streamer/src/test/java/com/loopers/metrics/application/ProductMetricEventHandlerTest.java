@@ -15,7 +15,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,8 +51,8 @@ class ProductMetricEventHandlerTest {
             handler.handle(event, METADATA);
 
             // assert
-            verify(productMetricsRepository, never()).add(any(), any());
-            verify(productMetricHourlyRepository, never()).add(any(), any());
+            verify(productMetricsRepository, never()).addAll(any(), any());
+            verify(productMetricHourlyRepository, never()).addAll(any(), any());
         }
 
         @DisplayName("상품 조회 이벤트면 조회수를 1 증가시킨다.")
@@ -82,9 +81,9 @@ class ProductMetricEventHandlerTest {
             handler.handle(event, METADATA);
 
             // assert
-            ArgumentCaptor<ProductMetricHourlyDelta> captor = ArgumentCaptor.forClass(ProductMetricHourlyDelta.class);
-            verify(productMetricHourlyRepository).add(captor.capture(), any());
-            assertThat(captor.getValue()).isEqualTo(new ProductMetricHourlyDelta(
+            ArgumentCaptor<List<ProductMetricHourlyDelta>> captor = listCaptor();
+            verify(productMetricHourlyRepository).addAll(captor.capture(), any());
+            assertThat(captor.getValue()).containsExactly(new ProductMetricHourlyDelta(
                 OCCURRED_AT.toLocalDateTime().withMinute(0).withSecond(0).withNano(0),
                 101L,
                 1,
@@ -159,11 +158,9 @@ class ProductMetricEventHandlerTest {
             // assert
             ProductMetricDelta delta = captureDelta();
             assertThat(delta).isEqualTo(new ProductMetricDelta(101L, 0, 1, 0));
-            ArgumentCaptor<ProductMetricHourlyDelta> hourlyCaptor = ArgumentCaptor.forClass(
-                ProductMetricHourlyDelta.class
-            );
-            verify(productMetricHourlyRepository).add(hourlyCaptor.capture(), any());
-            assertThat(hourlyCaptor.getValue()).isEqualTo(new ProductMetricHourlyDelta(
+            ArgumentCaptor<List<ProductMetricHourlyDelta>> hourlyCaptor = listCaptor();
+            verify(productMetricHourlyRepository).addAll(hourlyCaptor.capture(), any());
+            assertThat(hourlyCaptor.getValue()).containsExactly(new ProductMetricHourlyDelta(
                 OCCURRED_AT.toLocalDateTime().withMinute(0).withSecond(0).withNano(0),
                 101L,
                 1,
@@ -186,14 +183,12 @@ class ProductMetricEventHandlerTest {
             handler.handleBatch(List.of(viewed, liked, ordered));
 
             // assert
-            ArgumentCaptor<ProductMetricDelta> metricCaptor = ArgumentCaptor.forClass(ProductMetricDelta.class);
-            ArgumentCaptor<ProductMetricHourlyDelta> hourlyCaptor = ArgumentCaptor.forClass(
-                ProductMetricHourlyDelta.class
-            );
-            verify(productMetricsRepository).add(metricCaptor.capture(), any());
-            verify(productMetricHourlyRepository).add(hourlyCaptor.capture(), any());
-            assertThat(metricCaptor.getValue()).isEqualTo(new ProductMetricDelta(101L, 1, 1, 2));
-            assertThat(hourlyCaptor.getValue()).isEqualTo(new ProductMetricHourlyDelta(
+            ArgumentCaptor<List<ProductMetricDelta>> metricCaptor = listCaptor();
+            ArgumentCaptor<List<ProductMetricHourlyDelta>> hourlyCaptor = listCaptor();
+            verify(productMetricsRepository).addAll(metricCaptor.capture(), any());
+            verify(productMetricHourlyRepository).addAll(hourlyCaptor.capture(), any());
+            assertThat(metricCaptor.getValue()).containsExactly(new ProductMetricDelta(101L, 1, 1, 2));
+            assertThat(hourlyCaptor.getValue()).containsExactly(new ProductMetricHourlyDelta(
                 OCCURRED_AT.toLocalDateTime().withMinute(0).withSecond(0).withNano(0),
                 101L,
                 1,
@@ -225,17 +220,15 @@ class ProductMetricEventHandlerTest {
             handler.handleBatch(List.of(firstProductAtTen, secondProductAtTen, firstProductAtEleven));
 
             // assert
-            ArgumentCaptor<ProductMetricDelta> metricCaptor = ArgumentCaptor.forClass(ProductMetricDelta.class);
-            ArgumentCaptor<ProductMetricHourlyDelta> hourlyCaptor = ArgumentCaptor.forClass(
-                ProductMetricHourlyDelta.class
-            );
-            verify(productMetricsRepository, times(2)).add(metricCaptor.capture(), any());
-            verify(productMetricHourlyRepository, times(3)).add(hourlyCaptor.capture(), any());
-            assertThat(metricCaptor.getAllValues()).containsExactly(
+            ArgumentCaptor<List<ProductMetricDelta>> metricCaptor = listCaptor();
+            ArgumentCaptor<List<ProductMetricHourlyDelta>> hourlyCaptor = listCaptor();
+            verify(productMetricsRepository).addAll(metricCaptor.capture(), any());
+            verify(productMetricHourlyRepository).addAll(hourlyCaptor.capture(), any());
+            assertThat(metricCaptor.getValue()).containsExactly(
                 new ProductMetricDelta(101L, 0, 2, 0),
                 new ProductMetricDelta(202L, 0, 1, 0)
             );
-            assertThat(hourlyCaptor.getAllValues()).containsExactly(
+            assertThat(hourlyCaptor.getValue()).containsExactly(
                 new ProductMetricHourlyDelta(
                     OCCURRED_AT.toLocalDateTime().withMinute(0).withSecond(0).withNano(0),
                     101L,
@@ -265,9 +258,15 @@ class ProductMetricEventHandlerTest {
     }
 
     private ProductMetricDelta captureDelta() {
-        ArgumentCaptor<ProductMetricDelta> captor = ArgumentCaptor.forClass(ProductMetricDelta.class);
-        verify(productMetricsRepository).add(captor.capture(), any());
-        return captor.getValue();
+        ArgumentCaptor<List<ProductMetricDelta>> captor = listCaptor();
+        verify(productMetricsRepository).addAll(captor.capture(), any());
+        assertThat(captor.getValue()).hasSize(1);
+        return captor.getValue().getFirst();
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> ArgumentCaptor<List<T>> listCaptor() {
+        return ArgumentCaptor.forClass(List.class);
     }
 
     private ProductMetricEventCommand command(CatalogEventEnvelope event, long offset) {
