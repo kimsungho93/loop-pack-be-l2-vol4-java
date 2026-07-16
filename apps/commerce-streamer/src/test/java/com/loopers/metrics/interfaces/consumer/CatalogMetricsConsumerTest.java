@@ -132,6 +132,30 @@ class CatalogMetricsConsumerTest {
                 .containsExactly("event-1");
             verify(acknowledgment, never()).acknowledge();
         }
+
+        @DisplayName("배치 중간 이벤트가 Metric 규칙에 맞지 않으면 실제 Record index를 전달한다.")
+        @Test
+        void throwsBatchListenerFailedException_whenMetricEventIsInvalid() throws IOException {
+            // arrange
+            ConsumerRecord<String, byte[]> first = record(event("event-1"), 1, 20L);
+            ConsumerRecord<String, byte[]> second = record(event("event-2", null), 1, 21L);
+
+            // act & assert
+            assertThatThrownBy(() -> consumer.consume(List.of(first, second), acknowledgment))
+                .isInstanceOfSatisfying(BatchListenerFailedException.class, exception ->
+                    assertThat(exception.getIndex()).isEqualTo(1)
+                )
+                .hasCauseInstanceOf(IllegalArgumentException.class)
+                .hasRootCauseMessage("delta must not be null for like metric event");
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<ProductMetricEventCommand>> captor = ArgumentCaptor.forClass(List.class);
+            verify(productMetricEventHandler).handleBatch(captor.capture());
+            assertThat(captor.getValue())
+                .extracting(command -> command.event().eventId())
+                .containsExactly("event-1");
+            verify(acknowledgment, never()).acknowledge();
+        }
     }
 
     private ConsumerRecord<String, byte[]> record(
@@ -150,12 +174,16 @@ class CatalogMetricsConsumerTest {
     }
 
     private CatalogEventEnvelope event(String eventId) {
+        return event(eventId, 1);
+    }
+
+    private CatalogEventEnvelope event(String eventId, Integer delta) {
         return new CatalogEventEnvelope(
             eventId,
             CatalogEventType.PRODUCT_LIKED,
             "PRODUCT",
             101L,
-            new CatalogEventPayload(101L, 1L, null, 1),
+            new CatalogEventPayload(101L, 1L, null, delta),
             OCCURRED_AT
         );
     }

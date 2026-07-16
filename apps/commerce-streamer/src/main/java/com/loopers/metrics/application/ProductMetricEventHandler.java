@@ -43,10 +43,10 @@ public class ProductMetricEventHandler {
                 continue;
             }
 
-            ProductMetricDelta metricDelta = ProductMetricDelta.from(command.event());
+            ProductMetricDelta metricDelta = command.metricDelta();
             metricDeltas.merge(metricDelta.productId(), metricDelta, ProductMetricDelta::plus);
 
-            ProductMetricHourlyDelta hourlyDelta = ProductMetricHourlyDelta.from(command.event());
+            ProductMetricHourlyDelta hourlyDelta = command.hourlyDelta();
             ProductMetricHourlyGroup hourlyGroup = new ProductMetricHourlyGroup(
                 hourlyDelta.windowStart(),
                 hourlyDelta.productId()
