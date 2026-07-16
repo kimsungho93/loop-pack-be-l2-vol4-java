@@ -91,6 +91,62 @@ class ProductMetricHourlyDeltaTest {
             .hasMessage("totalPrice must equal unitPrice multiplied by quantity");
     }
 
+    @DisplayName("같은 상품과 시간 Window의 지표 Delta를 항목별로 합산한다")
+    @Test
+    void addsHourlyMetricDeltasForSameProductAndWindow() {
+        // arrange
+        LocalDateTime windowStart = LocalDateTime.of(2026, 7, 13, 10, 0);
+        ProductMetricHourlyDelta first = new ProductMetricHourlyDelta(
+            windowStart, 101L, 1, 2, 3, 10_000
+        );
+        ProductMetricHourlyDelta second = new ProductMetricHourlyDelta(
+            windowStart, 101L, 4, -1, 2, 25_000
+        );
+
+        // act
+        ProductMetricHourlyDelta result = first.plus(second);
+
+        // assert
+        assertThat(result).isEqualTo(new ProductMetricHourlyDelta(
+            windowStart, 101L, 5, 1, 5, 35_000
+        ));
+    }
+
+    @DisplayName("서로 다른 상품의 시간 지표 Delta는 합산하지 않는다")
+    @Test
+    void rejectsHourlyMetricDeltasForDifferentProducts() {
+        // arrange
+        LocalDateTime windowStart = LocalDateTime.of(2026, 7, 13, 10, 0);
+        ProductMetricHourlyDelta first = new ProductMetricHourlyDelta(
+            windowStart, 101L, 1, 2, 3, 10_000
+        );
+        ProductMetricHourlyDelta second = new ProductMetricHourlyDelta(
+            windowStart, 202L, 4, -1, 2, 25_000
+        );
+
+        // act & assert
+        assertThatThrownBy(() -> first.plus(second))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("productId");
+    }
+
+    @DisplayName("서로 다른 시간 Window의 지표 Delta는 합산하지 않는다")
+    @Test
+    void rejectsHourlyMetricDeltasForDifferentWindows() {
+        // arrange
+        ProductMetricHourlyDelta first = new ProductMetricHourlyDelta(
+            LocalDateTime.of(2026, 7, 13, 10, 0), 101L, 1, 2, 3, 10_000
+        );
+        ProductMetricHourlyDelta second = new ProductMetricHourlyDelta(
+            LocalDateTime.of(2026, 7, 13, 11, 0), 101L, 4, -1, 2, 25_000
+        );
+
+        // act & assert
+        assertThatThrownBy(() -> first.plus(second))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("windowStart");
+    }
+
     private CatalogEventEnvelope event(CatalogEventType eventType, Integer delta) {
         return new CatalogEventEnvelope(
             "event-1",

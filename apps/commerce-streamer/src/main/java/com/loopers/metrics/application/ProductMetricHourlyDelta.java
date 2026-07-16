@@ -44,4 +44,22 @@ public record ProductMetricHourlyDelta(
             0
         );
     }
+
+    public ProductMetricHourlyDelta plus(ProductMetricHourlyDelta other) {
+        if (!productId.equals(other.productId())) {
+            throw new IllegalArgumentException("productId must match to add hourly metric deltas");
+        }
+        if (!windowStart.equals(other.windowStart())) {
+            throw new IllegalArgumentException("windowStart must match to add hourly metric deltas");
+        }
+
+        return new ProductMetricHourlyDelta(
+            windowStart,
+            productId,
+            viewCountDelta + other.viewCountDelta(),
+            likeDelta + other.likeDelta(),
+            orderQuantityDelta + other.orderQuantityDelta(),
+            orderAmountDelta + other.orderAmountDelta()
+        );
+    }
 }

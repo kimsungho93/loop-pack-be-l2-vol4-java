@@ -26,6 +26,19 @@ public record ProductMetricDelta(
         };
     }
 
+    public ProductMetricDelta plus(ProductMetricDelta other) {
+        if (!productId.equals(other.productId())) {
+            throw new IllegalArgumentException("productId must match to add metric deltas");
+        }
+
+        return new ProductMetricDelta(
+            productId,
+            likeCountDelta + other.likeCountDelta(),
+            viewCountDelta + other.viewCountDelta(),
+            salesCountDelta + other.salesCountDelta()
+        );
+    }
+
     private static long requiredDelta(CatalogEventEnvelope event) {
         Integer delta = event.payload().delta();
         if (delta == null) {
