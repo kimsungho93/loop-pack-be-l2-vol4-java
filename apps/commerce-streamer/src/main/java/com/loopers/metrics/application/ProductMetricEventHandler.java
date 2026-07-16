@@ -4,7 +4,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @RequiredArgsConstructor
 @Service
@@ -16,13 +20,47 @@ public class ProductMetricEventHandler {
 
     @Transactional
     public void handle(CatalogEventEnvelope event, EventHandlingMetadata metadata) {
+        handleCommands(List.of(new ProductMetricEventCommand(event, metadata)));
+    }
+
+    @Transactional
+    public void handleBatch(List<ProductMetricEventCommand> commands) {
+        handleCommands(commands);
+    }
+
+    private void handleCommands(List<ProductMetricEventCommand> commands) {
         ZonedDateTime handledAt = ZonedDateTime.now();
-        boolean saved = eventHandledRepository.saveIfAbsent(event, metadata, handledAt);
-        if (!saved) {
-            return;
+        Map<Long, ProductMetricDelta> metricDeltas = new LinkedHashMap<>();
+        Map<ProductMetricHourlyGroup, ProductMetricHourlyDelta> hourlyDeltas = new LinkedHashMap<>();
+
+        for (ProductMetricEventCommand command : commands) {
+            boolean saved = eventHandledRepository.saveIfAbsent(
+                command.event(),
+                command.metadata(),
+                handledAt
+            );
+            if (!saved) {
+                continue;
+            }
+
+            ProductMetricDelta metricDelta = ProductMetricDelta.from(command.event());
+            metricDeltas.merge(metricDelta.productId(), metricDelta, ProductMetricDelta::plus);
+
+            ProductMetricHourlyDelta hourlyDelta = ProductMetricHourlyDelta.from(command.event());
+            ProductMetricHourlyGroup hourlyGroup = new ProductMetricHourlyGroup(
+                hourlyDelta.windowStart(),
+                hourlyDelta.productId()
+            );
+            hourlyDeltas.merge(hourlyGroup, hourlyDelta, ProductMetricHourlyDelta::plus);
         }
 
-        productMetricsRepository.add(ProductMetricDelta.from(event), handledAt);
-        productMetricHourlyRepository.add(ProductMetricHourlyDelta.from(event), handledAt);
+        metricDeltas.values().forEach(delta -> productMetricsRepository.add(delta, handledAt));
+        hourlyDeltas.values().forEach(delta -> productMetricHourlyRepository.add(delta, handledAt));
+    }
+
+    private record ProductMetricHourlyGroup(
+        LocalDateTime windowStart,
+        long productId
+    ) {
     }
 }

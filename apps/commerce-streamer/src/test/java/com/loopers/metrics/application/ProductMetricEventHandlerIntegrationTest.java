@@ -9,8 +9,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
 
 @SpringBootTest(properties = {
     "commerce.metrics.catalog.auto-startup=false"
@@ -70,6 +72,31 @@ class ProductMetricEventHandlerIntegrationTest {
         assertThat(hourlyOrderMetric()).isEqualTo(new HourlyOrderMetric(2, 25_000));
     }
 
+    @DisplayName("같은 상품과 시간 Window의 이벤트 Batch를 합산하여 저장한다.")
+    @Test
+    void storesAggregatedMetrics_whenBatchHasSameProductAndWindow() {
+        // arrange
+        ProductMetricEventCommand first = command(viewedEvent("event-1"), 10L);
+        ProductMetricEventCommand second = command(viewedEvent("event-2"), 11L);
+
+        // act
+        handler.handleBatch(List.of(first, second));
+
+        // assert
+        assertAll(
+            () -> assertThat(handledEventCount()).isEqualTo(2),
+            () -> assertThat(viewCount()).isEqualTo(2),
+            () -> assertThat(hourlyViewCount()).isEqualTo(2)
+        );
+    }
+
+    private ProductMetricEventCommand command(CatalogEventEnvelope event, long offset) {
+        return new ProductMetricEventCommand(
+            event,
+            new EventHandlingMetadata("catalog-events", 0, offset)
+        );
+    }
+
     private CatalogEventEnvelope viewedEvent(String eventId) {
         return new CatalogEventEnvelope(
             eventId,
@@ -108,6 +135,14 @@ class ProductMetricEventHandlerIntegrationTest {
     private long hourlyViewCount() {
         return jdbcTemplate.queryForObject(
             "select view_count from product_metric_hourly where product_id = ?",
+            Long.class,
+            101L
+        );
+    }
+
+    private long viewCount() {
+        return jdbcTemplate.queryForObject(
+            "select view_count from product_metrics where product_id = ?",
             Long.class,
             101L
         );
