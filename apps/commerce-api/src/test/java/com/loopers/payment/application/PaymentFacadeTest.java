@@ -248,7 +248,7 @@ class PaymentFacadeTest {
                 () -> assertThat(payment.getPgReason()).isEqualTo(SUCCESS_REASON),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
             );
-            verify(orderPaymentEventPublisher).publishPaid(any(Payment.class), any(ZonedDateTime.class));
+            verify(orderPaymentEventPublisher).publishPaid(any(Payment.class), any(Order.class), any(ZonedDateTime.class));
         }
 
         @DisplayName("결제가 이미 성공이어도 주문이 아직 완료되지 않았다면 결제 완료 이벤트를 발행한다.")
@@ -278,7 +278,7 @@ class PaymentFacadeTest {
                 () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
             );
-            verify(orderPaymentEventPublisher).publishPaid(any(Payment.class), any(ZonedDateTime.class));
+            verify(orderPaymentEventPublisher).publishPaid(any(Payment.class), any(Order.class), any(ZonedDateTime.class));
         }
 
         @DisplayName("이미 주문까지 결제 완료 상태이면 결제 완료 이벤트를 다시 발행하지 않는다.")
@@ -309,7 +309,8 @@ class PaymentFacadeTest {
                 () -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED),
                 () -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID)
             );
-            verify(orderPaymentEventPublisher, never()).publishPaid(any(Payment.class), any(ZonedDateTime.class));
+            verify(orderPaymentEventPublisher, never())
+                .publishPaid(any(Payment.class), any(Order.class), any(ZonedDateTime.class));
         }
 
         @DisplayName("실패 콜백이 도착하면 결제와 주문을 실패 상태로 바꾼다.")

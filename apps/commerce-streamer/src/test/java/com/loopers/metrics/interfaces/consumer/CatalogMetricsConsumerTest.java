@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.loopers.metrics.application.CatalogEventEnvelope;
 import com.loopers.metrics.application.CatalogEventPayload;
 import com.loopers.metrics.application.CatalogEventType;
+import com.loopers.metrics.application.CatalogMetricsMetrics;
 import com.loopers.metrics.application.EventHandlingMetadata;
+import com.loopers.metrics.application.ProductMetricEventCommand;
 import com.loopers.metrics.application.ProductMetricEventHandler;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +30,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -43,6 +46,9 @@ class CatalogMetricsConsumerTest {
     @Mock
     private Acknowledgment acknowledgment;
 
+    @Mock
+    private CatalogMetricsMetrics catalogMetricsMetrics;
+
     private CatalogMetricsConsumer consumer;
 
     private ObjectMapper objectMapper;
@@ -53,36 +59,43 @@ class CatalogMetricsConsumerTest {
             .findAndRegisterModules()
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-        consumer = new CatalogMetricsConsumer(productMetricEventHandler, objectMapper);
+        consumer = new CatalogMetricsConsumer(productMetricEventHandler, objectMapper, catalogMetricsMetrics);
     }
 
     @DisplayName("catalog metrics 이벤트를 소비할 때")
     @Nested
     class Consume {
 
-        @DisplayName("배치의 모든 이벤트를 처리한 뒤 ack 한다.")
+        @DisplayName("배치의 모든 이벤트를 한 번에 처리한 뒤 ack 한다.")
         @Test
         void acknowledgesAfterHandlingAllRecords() throws IOException {
             // arrange
-            CatalogEventEnvelope event = event("event-1");
-            ConsumerRecord<String, byte[]> record = record(event, 1, 20L);
+            CatalogEventEnvelope first = event("event-1");
+            CatalogEventEnvelope second = event("event-2");
 
             // act
-            consumer.consume(List.of(record), acknowledgment);
+            consumer.consume(
+                List.of(record(first, 1, 20L), record(second, 1, 21L)),
+                acknowledgment
+            );
 
             // assert
-            ArgumentCaptor<CatalogEventEnvelope> eventCaptor = ArgumentCaptor.forClass(CatalogEventEnvelope.class);
-            ArgumentCaptor<EventHandlingMetadata> metadataCaptor = ArgumentCaptor.forClass(EventHandlingMetadata.class);
-            verify(productMetricEventHandler).handle(eventCaptor.capture(), metadataCaptor.capture());
-            CatalogEventEnvelope actual = eventCaptor.getValue();
-            assertThat(actual.eventId()).isEqualTo(event.eventId());
-            assertThat(actual.eventType()).isEqualTo(event.eventType());
-            assertThat(actual.aggregateType()).isEqualTo(event.aggregateType());
-            assertThat(actual.aggregateId()).isEqualTo(event.aggregateId());
-            assertThat(actual.payload()).isEqualTo(event.payload());
-            assertThat(actual.occurredAt().toInstant()).isEqualTo(event.occurredAt().toInstant());
-            assertThat(metadataCaptor.getValue()).isEqualTo(new EventHandlingMetadata("catalog-events", 1, 20L));
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<ProductMetricEventCommand>> captor = ArgumentCaptor.forClass(List.class);
+            verify(productMetricEventHandler).handleBatch(captor.capture());
+            assertThat(captor.getValue())
+                .extracting(command -> command.event().eventId())
+                .containsExactly("event-1", "event-2");
+            assertThat(captor.getValue())
+                .extracting(ProductMetricEventCommand::metadata)
+                .containsExactly(
+                    new EventHandlingMetadata("catalog-events", 1, 20L),
+                    new EventHandlingMetadata("catalog-events", 1, 21L)
+                );
             verify(acknowledgment).acknowledge();
+            verify(catalogMetricsMetrics).recordBatchRecords(2);
+            verify(catalogMetricsMetrics).recordBatchDuration(anyLong());
+            verify(catalogMetricsMetrics, never()).recordBatchFailure();
         }
 
         @DisplayName("처리 중 실패하면 ack 하지 않는다.")
@@ -92,11 +105,13 @@ class CatalogMetricsConsumerTest {
             ConsumerRecord<String, byte[]> record = record(event("event-1"), 1, 20L);
             doThrow(new RuntimeException("db unavailable"))
                 .when(productMetricEventHandler)
-                .handle(any(CatalogEventEnvelope.class), any(EventHandlingMetadata.class));
+                .handleBatch(any());
 
             // act & assert
             assertThatThrownBy(() -> consumer.consume(List.of(record), acknowledgment))
-                .isInstanceOf(BatchListenerFailedException.class)
+                .isInstanceOfSatisfying(BatchListenerFailedException.class, exception ->
+                    assertThat(exception.getIndex()).isZero()
+                )
                 .hasCauseInstanceOf(RuntimeException.class)
                 .hasRootCauseMessage("db unavailable");
 
@@ -117,7 +132,38 @@ class CatalogMetricsConsumerTest {
                 )
                 .hasCauseInstanceOf(IllegalArgumentException.class);
 
-            verify(productMetricEventHandler).handle(any(CatalogEventEnvelope.class), any(EventHandlingMetadata.class));
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<ProductMetricEventCommand>> captor = ArgumentCaptor.forClass(List.class);
+            verify(productMetricEventHandler).handleBatch(captor.capture());
+            assertThat(captor.getValue())
+                .extracting(command -> command.event().eventId())
+                .containsExactly("event-1");
+            verify(acknowledgment, never()).acknowledge();
+            verify(catalogMetricsMetrics).recordBatchFailure();
+            verify(catalogMetricsMetrics).recordBatchDuration(anyLong());
+        }
+
+        @DisplayName("배치 중간 이벤트가 Metric 규칙에 맞지 않으면 실제 Record index를 전달한다.")
+        @Test
+        void throwsBatchListenerFailedException_whenMetricEventIsInvalid() throws IOException {
+            // arrange
+            ConsumerRecord<String, byte[]> first = record(event("event-1"), 1, 20L);
+            ConsumerRecord<String, byte[]> second = record(event("event-2", null), 1, 21L);
+
+            // act & assert
+            assertThatThrownBy(() -> consumer.consume(List.of(first, second), acknowledgment))
+                .isInstanceOfSatisfying(BatchListenerFailedException.class, exception ->
+                    assertThat(exception.getIndex()).isEqualTo(1)
+                )
+                .hasCauseInstanceOf(IllegalArgumentException.class)
+                .hasRootCauseMessage("delta must not be null for like metric event");
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<ProductMetricEventCommand>> captor = ArgumentCaptor.forClass(List.class);
+            verify(productMetricEventHandler).handleBatch(captor.capture());
+            assertThat(captor.getValue())
+                .extracting(command -> command.event().eventId())
+                .containsExactly("event-1");
             verify(acknowledgment, never()).acknowledge();
         }
     }
@@ -138,12 +184,16 @@ class CatalogMetricsConsumerTest {
     }
 
     private CatalogEventEnvelope event(String eventId) {
+        return event(eventId, 1);
+    }
+
+    private CatalogEventEnvelope event(String eventId, Integer delta) {
         return new CatalogEventEnvelope(
             eventId,
             CatalogEventType.PRODUCT_LIKED,
             "PRODUCT",
             101L,
-            new CatalogEventPayload(101L, 1L, null, 1),
+            new CatalogEventPayload(101L, 1L, null, delta),
             OCCURRED_AT
         );
     }

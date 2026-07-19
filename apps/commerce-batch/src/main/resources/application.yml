@@ -9,6 +9,7 @@ spring:
     import:
       - jpa.yml
       - redis.yml
+      - ranking.yml
       - logging.yml
       - monitoring.yml
   batch:
@@ -16,6 +17,11 @@ spring:
       name: ${job.name:NONE}
     jdbc:
       initialize-schema: never
+
+commerce:
+  ranking:
+    cold-start:
+      carry-over-rate: 0.1
 
 management:
   health:

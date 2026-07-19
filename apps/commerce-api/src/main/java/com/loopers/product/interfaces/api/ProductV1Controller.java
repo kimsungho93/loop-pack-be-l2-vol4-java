@@ -1,6 +1,6 @@
 package com.loopers.product.interfaces.api;
 
-import com.loopers.product.application.ProductDetailInfo;
+import com.loopers.product.application.ProductDetailResult;
 import com.loopers.product.application.ProductFacade;
 import com.loopers.product.application.ProductListInfo;
 import com.loopers.shared.presentation.ApiResponse;
@@ -33,11 +33,11 @@ public class ProductV1Controller {
     }
 
     @GetMapping("/{productId}")
-    public ApiResponse<ProductV1Dto.ProductResponse> getProduct(
+    public ApiResponse<ProductV1Dto.ProductDetailResponse> getProduct(
         @AuthenticationPrincipal Long userId,
         @PathVariable Long productId
     ) {
-        ProductDetailInfo info = productFacade.getProduct(productId, userId);
-        return ApiResponse.success(ProductV1Dto.ProductResponse.from(info));
+        ProductDetailResult result = productFacade.getProduct(productId, userId);
+        return ApiResponse.success(ProductV1Dto.ProductDetailResponse.from(result));
     }
 }

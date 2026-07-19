@@ -44,7 +44,7 @@ public class PaymentRecoveryResultHandler {
             payment.markSucceeded(transaction.transactionKey(), transaction.reason(), completedAt);
             order.completePayment();
             if (newlyPaid) {
-                orderPaymentEventPublisher.publishPaid(payment, completedAt);
+                orderPaymentEventPublisher.publishPaid(payment, order, completedAt);
             }
             return;
         }

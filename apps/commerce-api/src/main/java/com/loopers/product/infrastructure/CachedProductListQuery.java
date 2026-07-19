@@ -16,6 +16,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
@@ -73,6 +75,11 @@ public class CachedProductListQuery implements ProductListQuery {
         }
 
         return loadAndCache(query, brandId, sort, cacheKey);
+    }
+
+    @Override
+    public List<ProductListInfo> findVisibleProductsByIds(Collection<Long> productIds) {
+        return productListQueryDsl.findVisibleProductsByIds(productIds);
     }
 
     private boolean isCacheable(PageQuery query) {

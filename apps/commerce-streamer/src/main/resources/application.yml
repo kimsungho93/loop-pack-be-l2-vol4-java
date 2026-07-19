@@ -22,6 +22,7 @@ spring:
       - jpa.yml
       - redis.yml
       - kafka.yml
+      - ranking.yml
       - logging.yml
       - monitoring.yml
 
@@ -30,12 +31,27 @@ commerce:
     catalog:
       topic-name: catalog-events
       group-id: catalog-metrics
+  ranking:
+    catalog:
+      group-id: catalog-ranking
+      auto-startup: true
 
 ---
 spring:
   config:
     activate:
-      on-profile: local, test
+      on-profile: local
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+
+commerce:
+  ranking:
+    catalog:
+      auto-startup: false
 
 ---
 spring:

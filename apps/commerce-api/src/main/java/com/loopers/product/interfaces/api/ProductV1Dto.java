@@ -1,7 +1,7 @@
 package com.loopers.product.interfaces.api;
 
 import com.loopers.brand.application.BrandInfo;
-import com.loopers.product.application.ProductDetailInfo;
+import com.loopers.product.application.ProductDetailResult;
 import com.loopers.product.application.ProductListInfo;
 
 public class ProductV1Dto {
@@ -28,7 +28,7 @@ public class ProductV1Dto {
         long price,
         long likeCount
     ) {
-        public static ProductResponse from(ProductDetailInfo info) {
+        public static ProductResponse from(ProductListInfo info) {
             return new ProductResponse(
                 info.id(),
                 BrandResponse.from(info.brand()),
@@ -38,15 +38,26 @@ public class ProductV1Dto {
                 info.likeCount()
             );
         }
+    }
 
-        public static ProductResponse from(ProductListInfo info) {
-            return new ProductResponse(
-                info.id(),
-                BrandResponse.from(info.brand()),
-                info.name(),
-                info.description(),
-                info.price(),
-                info.likeCount()
+    public record ProductDetailResponse(
+        Long id,
+        BrandResponse brand,
+        String name,
+        String description,
+        long price,
+        long likeCount,
+        Long rank
+    ) {
+        public static ProductDetailResponse from(ProductDetailResult result) {
+            return new ProductDetailResponse(
+                result.product().id(),
+                BrandResponse.from(result.product().brand()),
+                result.product().name(),
+                result.product().description(),
+                result.product().price(),
+                result.product().likeCount(),
+                result.rank()
             );
         }
     }

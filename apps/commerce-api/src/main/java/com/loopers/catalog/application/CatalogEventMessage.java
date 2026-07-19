@@ -9,6 +9,10 @@ public record CatalogEventMessage(
     Long userId,
     Long brandId,
     Integer delta,
+    Long orderId,
+    Integer quantity,
+    Long unitPrice,
+    Long totalPrice,
     ZonedDateTime occurredAt
 ) {
 
@@ -25,6 +29,10 @@ public record CatalogEventMessage(
             userId,
             brandId,
             null,
+            null,
+            null,
+            null,
+            null,
             occurredAt
         );
     }
@@ -36,6 +44,10 @@ public record CatalogEventMessage(
             userId,
             null,
             1,
+            null,
+            null,
+            null,
+            null,
             occurredAt
         );
     }
@@ -47,6 +59,33 @@ public record CatalogEventMessage(
             userId,
             null,
             -1,
+            null,
+            null,
+            null,
+            null,
+            occurredAt
+        );
+    }
+
+    public static CatalogEventMessage productOrdered(
+        Long userId,
+        Long orderId,
+        Long productId,
+        Integer quantity,
+        Long unitPrice,
+        Long totalPrice,
+        ZonedDateTime occurredAt
+    ) {
+        return new CatalogEventMessage(
+            CatalogEventType.PRODUCT_ORDERED,
+            productId,
+            userId,
+            null,
+            null,
+            orderId,
+            quantity,
+            unitPrice,
+            totalPrice,
             occurredAt
         );
     }
@@ -56,6 +95,15 @@ public record CatalogEventMessage(
     }
 
     public CatalogEventPayload payload() {
-        return new CatalogEventPayload(productId, userId, brandId, delta);
+        return new CatalogEventPayload(
+            productId,
+            userId,
+            brandId,
+            delta,
+            orderId,
+            quantity,
+            unitPrice,
+            totalPrice
+        );
     }
 }

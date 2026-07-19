@@ -1,5 +1,8 @@
 package com.loopers.payment.application.event;
 
+import com.loopers.order.domain.Order;
+import com.loopers.order.domain.OrderItem;
+import com.loopers.order.domain.OrderItems;
 import com.loopers.payment.domain.CardType;
 import com.loopers.payment.domain.Payment;
 import com.loopers.payment.domain.PaymentFailureReason;
@@ -13,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -42,10 +46,11 @@ class OrderPaymentEventPublisherTest {
             // arrange
             Payment payment = createPendingPayment();
             payment.markSucceeded(TRANSACTION_KEY, "success", OCCURRED_AT);
+            Order order = createOrder();
             OrderPaymentEventPublisher publisher = new OrderPaymentEventPublisher(applicationEventPublisher);
 
             // act
-            publisher.publishPaid(payment, OCCURRED_AT);
+            publisher.publishPaid(payment, order, OCCURRED_AT);
 
             // assert
             ArgumentCaptor<OrderPaidEvent> eventCaptor = ArgumentCaptor.forClass(OrderPaidEvent.class);
@@ -59,6 +64,9 @@ class OrderPaymentEventPublisherTest {
                 () -> assertThat(event.userId()).isEqualTo(USER_ID),
                 () -> assertThat(event.amount()).isEqualTo(AMOUNT),
                 () -> assertThat(event.pgTransactionKey()).isEqualTo(TRANSACTION_KEY),
+                () -> assertThat(event.items()).containsExactly(
+                    new OrderPaidItemSnapshot(1L, AMOUNT, 1, AMOUNT)
+                ),
                 () -> assertThat(event.occurredAt()).isEqualTo(OCCURRED_AT)
             );
         }
@@ -99,5 +107,10 @@ class OrderPaymentEventPublisherTest {
 
     private Payment createPendingPayment() {
         return Payment.pending(USER_ID, ORDER_ID, AMOUNT, CardType.SAMSUNG, CARD_NO, TRANSACTION_KEY, REQUESTED_AT);
+    }
+
+    private Order createOrder() {
+        OrderItem item = OrderItem.create(1L, "애플", 1L, "아이폰 16 Pro", AMOUNT, 1);
+        return Order.create(USER_ID, OrderItems.of(List.of(item)));
     }
 }
