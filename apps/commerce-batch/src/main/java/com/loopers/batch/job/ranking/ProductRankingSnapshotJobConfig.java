@@ -1,15 +1,35 @@
 package com.loopers.batch.job.ranking;
 
 import com.loopers.batch.job.ranking.step.PrepareProductRankingTasklet;
+import com.loopers.batch.job.ranking.step.ProductRankingCandidateWriter;
+import com.loopers.batch.job.ranking.step.ProductRankingScoreProcessor;
 import com.loopers.batch.listener.StepMonitorListener;
+import com.loopers.ranking.application.ProductMetricAggregate;
+import com.loopers.ranking.application.RankingCandidate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.Step;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.ItemReader;
+import org.springframework.batch.item.database.JdbcPagingItemReader;
+import org.springframework.batch.item.database.Order;
+import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.dao.TransientDataAccessResourceException;
+import org.springframework.retry.backoff.FixedBackOffPolicy;
+import org.springframework.retry.support.RetryTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
+
+import javax.sql.DataSource;
+import java.util.List;
+import java.util.Map;
 
 @ConditionalOnProperty(
     name = "spring.batch.job.name",
@@ -21,6 +41,13 @@ public class ProductRankingSnapshotJobConfig {
 
     public static final String JOB_NAME = "productRankingSnapshotJob";
     public static final String PREPARE_STEP_NAME = "prepareProductRankingStep";
+    public static final String CALCULATE_STEP_NAME = "calculateProductRankingScoresStep";
+    public static final String PRODUCT_METRIC_AGGREGATE_READER_NAME =
+        "productMetricAggregateReader";
+    private static final int PAGE_SIZE = 1_000;
+    private static final int CHUNK_SIZE = 1_000;
+    private static final int RETRY_LIMIT = 3;
+    private static final long RETRY_BACK_OFF_MILLIS = 100;
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
@@ -32,6 +59,93 @@ public class ProductRankingSnapshotJobConfig {
         return new StepBuilder(PREPARE_STEP_NAME, jobRepository)
             .tasklet(tasklet, transactionManager)
             .listener(stepMonitorListener)
+            .build();
+    }
+
+    @Bean(CALCULATE_STEP_NAME)
+    public Step calculateProductRankingScoresStep(
+        @Qualifier(PRODUCT_METRIC_AGGREGATE_READER_NAME)
+        JdbcPagingItemReader<ProductMetricAggregate> reader,
+        ProductRankingScoreProcessor processor,
+        ProductRankingCandidateWriter writer
+    ) {
+        RetryTemplate readRetryTemplate = transientDatabaseReadRetryTemplate();
+        ItemReader<ProductMetricAggregate> retryingReader = () ->
+            readRetryTemplate.execute(context -> reader.read());
+
+        return new StepBuilder(CALCULATE_STEP_NAME, jobRepository)
+            .<ProductMetricAggregate, RankingCandidate>chunk(CHUNK_SIZE, transactionManager)
+            .reader(retryingReader)
+            .stream(reader)
+            .processor(processor)
+            .writer(writer)
+            .faultTolerant()
+            .skipLimit(0)
+            .retry(PessimisticLockingFailureException.class)
+            .retry(TransientDataAccessResourceException.class)
+            .noRetry(QueryTimeoutException.class)
+            .retryLimit(RETRY_LIMIT)
+            .backOffPolicy(retryBackOffPolicy())
+            .listener(stepMonitorListener)
+            .build();
+    }
+
+    @StepScope
+    @Bean(PRODUCT_METRIC_AGGREGATE_READER_NAME)
+    public JdbcPagingItemReader<ProductMetricAggregate> productMetricAggregateReader(
+        DataSource dataSource,
+        @Value("#{jobParameters['period']}") String period,
+        @Value("#{jobParameters['aggregationEndDate']}") String aggregationEndDate,
+        @Value("#{jobParameters['revision']}") Long revision
+    ) {
+        ProductRankingSnapshotJobParameters parameters =
+            ProductRankingSnapshotJobParameters.from(period, aggregationEndDate, revision);
+
+        return new JdbcPagingItemReaderBuilder<ProductMetricAggregate>()
+            .name(PRODUCT_METRIC_AGGREGATE_READER_NAME)
+            .dataSource(dataSource)
+            .selectClause("""
+                product_id,
+                sum(view_count) as view_count,
+                sum(like_delta) as like_delta,
+                sum(order_amount) as order_amount
+                """)
+            .fromClause("product_metrics")
+            .whereClause(
+                "metric_date between :periodStart and :aggregationEndDate"
+            )
+            .groupClause("product_id")
+            .sortKeys(Map.of("product_id", Order.ASCENDING))
+            .parameterValues(Map.of(
+                "periodStart", parameters.periodStart(),
+                "aggregationEndDate", parameters.aggregationEndDate()
+            ))
+            .rowMapper((resultSet, rowNumber) -> new ProductMetricAggregate(
+                resultSet.getLong("product_id"),
+                resultSet.getLong("view_count"),
+                resultSet.getLong("like_delta"),
+                resultSet.getLong("order_amount")
+            ))
+            .pageSize(PAGE_SIZE)
+            .fetchSize(PAGE_SIZE)
+            .saveState(true)
+            .build();
+    }
+
+    private FixedBackOffPolicy retryBackOffPolicy() {
+        FixedBackOffPolicy backOffPolicy = new FixedBackOffPolicy();
+        backOffPolicy.setBackOffPeriod(RETRY_BACK_OFF_MILLIS);
+        return backOffPolicy;
+    }
+
+    private RetryTemplate transientDatabaseReadRetryTemplate() {
+        return RetryTemplate.builder()
+            .maxAttempts(RETRY_LIMIT)
+            .fixedBackoff(RETRY_BACK_OFF_MILLIS)
+            .retryOn(List.of(
+                PessimisticLockingFailureException.class,
+                TransientDataAccessResourceException.class
+            ))
             .build();
     }
 }
