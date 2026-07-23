@@ -137,6 +137,41 @@ class JdbcPublishedRankingQueryIntegrationTest {
         );
     }
 
+    @DisplayName("탈락 후보를 Cleanup해도 공개된 Ranking 조회 결과는 바뀌지 않는다.")
+    @Test
+    void returnsSamePublishedRanking_afterUnrankedCandidatesAreDeleted() {
+        // arrange
+        insertSnapshot(1L, RankingPeriod.WEEKLY, "2026-07-13", "2026-07-15", 1, true);
+        insertWeeklyRank(1L, 101L, 1);
+        insertWeeklyRank(1L, 202L, 4);
+        insertWeeklyRank(1L, 303L, null);
+        PublishedRanking beforeCleanup = publishedRankingQuery
+            .findLatestCompleted(RankingPeriod.WEEKLY, REQUEST_DATE)
+            .orElseThrow();
+
+        // act
+        jdbcTemplate.update(
+            """
+                delete from mv_product_rank_weekly
+                where snapshot_id = ?
+                  and rank_no is null
+                """,
+            1L
+        );
+        PublishedRanking afterCleanup = publishedRankingQuery
+            .findLatestCompleted(RankingPeriod.WEEKLY, REQUEST_DATE)
+            .orElseThrow();
+
+        // assert
+        assertAll(
+            () -> assertThat(afterCleanup).isEqualTo(beforeCleanup),
+            () -> assertThat(afterCleanup.positions()).containsExactly(
+                new RankingPosition(1, 101L),
+                new RankingPosition(4, 202L)
+            )
+        );
+    }
+
     @DisplayName("완료된 스냅샷이 없으면 조회 결과 자체가 비어 있다.")
     @Test
     void returnsEmpty_whenCompletedSnapshotDoesNotExist() {
