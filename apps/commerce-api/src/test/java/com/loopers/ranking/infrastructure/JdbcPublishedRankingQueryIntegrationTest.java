@@ -54,6 +54,7 @@ class JdbcPublishedRankingQueryIntegrationTest {
         // arrange
         insertSnapshot(1L, RankingPeriod.WEEKLY, "2026-07-13", "2026-07-17", 9, true);
         insertWeeklyRank(1L, 901L, 1);
+        updateCompletedAt(1L, LocalDateTime.of(2026, 7, 21, 2, 10));
 
         insertSnapshot(2L, RankingPeriod.WEEKLY, "2026-07-13", "2026-07-18", 1, true);
         insertWeeklyRank(2L, 201L, 1);
@@ -62,6 +63,7 @@ class JdbcPublishedRankingQueryIntegrationTest {
         insertWeeklyRank(3L, 302L, 4);
         insertWeeklyRank(3L, 301L, 1);
         insertWeeklyRank(3L, 399L, null);
+        updateCompletedAt(3L, LocalDateTime.of(2026, 7, 20, 2, 10));
 
         insertSnapshot(4L, RankingPeriod.WEEKLY, "2026-07-13", "2026-07-18", 3, false);
         insertWeeklyRank(4L, 401L, 1);
@@ -206,6 +208,14 @@ class JdbcPublishedRankingQueryIntegrationTest {
 
     private void insertWeeklyRank(long snapshotId, long productId, Integer rank) {
         insertRank("mv_product_rank_weekly", snapshotId, productId, rank);
+    }
+
+    private void updateCompletedAt(long snapshotId, LocalDateTime completedAt) {
+        jdbcTemplate.update(
+            "update product_rank_snapshots set completed_at = ? where id = ?",
+            Timestamp.valueOf(completedAt),
+            snapshotId
+        );
     }
 
     private void insertRank(
