@@ -1,6 +1,6 @@
 package com.loopers.ranking.interfaces.api;
 
-import com.loopers.ranking.application.RankingQuery;
+import com.loopers.ranking.application.DailyRankingQuery;
 import com.loopers.shared.presentation.ApiResponse;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
@@ -34,7 +34,7 @@ class RankingV1ApiFailureE2ETest {
     private final DatabaseCleanUp databaseCleanUp;
 
     @MockitoBean
-    private RankingQuery rankingQuery;
+    private DailyRankingQuery dailyRankingQuery;
 
     @Autowired
     RankingV1ApiFailureE2ETest(
@@ -58,7 +58,7 @@ class RankingV1ApiFailureE2ETest {
         @Test
         void returnsServiceUnavailable_whenRedisRankingLookupFails() {
             // arrange
-            when(rankingQuery.findDaily(any(LocalDate.class), anyLong(), anyLong()))
+            when(dailyRankingQuery.findDaily(any(LocalDate.class), anyLong(), anyLong()))
                 .thenThrow(new RedisConnectionFailureException("redis down"));
 
             // act

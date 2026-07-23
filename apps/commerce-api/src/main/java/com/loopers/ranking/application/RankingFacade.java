@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @Component
 public class RankingFacade {
 
-    private final RankingService rankingService;
+    private final RankingReadService rankingReadService;
     private final ProductListQuery productListQuery;
     private final RankingMetrics rankingMetrics;
 
@@ -47,7 +47,7 @@ public class RankingFacade {
 
     private PageResult<RankingPosition> getRankingPage(LocalDate date, PageQuery pageQuery) {
         try {
-            return rankingService.getDailyRanking(date, pageQuery);
+            return rankingReadService.getDailyRanking(date, pageQuery);
         } catch (DataAccessException e) {
             rankingMetrics.recordPageLookupFailure();
             log.error("Failed to look up daily ranking. date={}", date, e);

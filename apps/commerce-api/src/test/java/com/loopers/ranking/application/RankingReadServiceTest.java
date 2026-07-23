@@ -14,17 +14,17 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
-class RankingServiceTest {
+class RankingReadServiceTest {
 
     private static final LocalDate RANKING_DATE = LocalDate.of(2026, 7, 13);
 
-    private FakeRankingQuery rankingQuery;
-    private RankingService rankingService;
+    private FakeDailyRankingQuery dailyRankingQuery;
+    private RankingReadService rankingReadService;
 
     @BeforeEach
     void setUp() {
-        rankingQuery = new FakeRankingQuery();
-        rankingService = new RankingService(rankingQuery);
+        dailyRankingQuery = new FakeDailyRankingQuery();
+        rankingReadService = new RankingReadService(dailyRankingQuery);
     }
 
     @DisplayName("일간 Ranking Page를 조회할 때")
@@ -35,19 +35,19 @@ class RankingServiceTest {
         @Test
         void convertsPageRangeAndProductPositionsToRanks() {
             // arrange
-            rankingQuery.willReturn(new RankingEntries(List.of(205L, 309L), 5));
+            dailyRankingQuery.willReturn(new DailyRankingEntries(List.of(205L, 309L), 5));
 
             // act
-            PageResult<RankingPosition> result = rankingService.getDailyRanking(
+            PageResult<RankingPosition> result = rankingReadService.getDailyRanking(
                 RANKING_DATE,
                 new PageQuery(1, 2)
             );
 
             // assert
             assertAll(
-                () -> assertThat(rankingQuery.date()).isEqualTo(RANKING_DATE),
-                () -> assertThat(rankingQuery.start()).isEqualTo(2),
-                () -> assertThat(rankingQuery.end()).isEqualTo(3),
+                () -> assertThat(dailyRankingQuery.date()).isEqualTo(RANKING_DATE),
+                () -> assertThat(dailyRankingQuery.start()).isEqualTo(2),
+                () -> assertThat(dailyRankingQuery.end()).isEqualTo(3),
                 () -> assertThat(result.content()).containsExactly(
                     new RankingPosition(3, 205L),
                     new RankingPosition(4, 309L)
@@ -65,10 +65,10 @@ class RankingServiceTest {
         @Test
         void returnsEmptyFirstAndLastPage_whenRankingIsEmpty() {
             // arrange
-            rankingQuery.willReturn(new RankingEntries(List.of(), 0));
+            dailyRankingQuery.willReturn(new DailyRankingEntries(List.of(), 0));
 
             // act
-            PageResult<RankingPosition> result = rankingService.getDailyRanking(
+            PageResult<RankingPosition> result = rankingReadService.getDailyRanking(
                 RANKING_DATE,
                 new PageQuery(0, 20)
             );
@@ -87,10 +87,10 @@ class RankingServiceTest {
         @Test
         void marksLastPage_whenLastRangeIsRequested() {
             // arrange
-            rankingQuery.willReturn(new RankingEntries(List.of(401L), 5));
+            dailyRankingQuery.willReturn(new DailyRankingEntries(List.of(401L), 5));
 
             // act
-            PageResult<RankingPosition> result = rankingService.getDailyRanking(
+            PageResult<RankingPosition> result = rankingReadService.getDailyRanking(
                 RANKING_DATE,
                 new PageQuery(2, 2)
             );
@@ -112,15 +112,15 @@ class RankingServiceTest {
         @Test
         void convertsRedisPositionToOneBasedRank() {
             // arrange
-            rankingQuery.willReturnRank(0L);
+            dailyRankingQuery.willReturnRank(0L);
 
             // act
-            Optional<Long> result = rankingService.getDailyRank(RANKING_DATE, 205L);
+            Optional<Long> result = rankingReadService.getDailyRank(RANKING_DATE, 205L);
 
             // assert
             assertAll(
-                () -> assertThat(rankingQuery.rankDate()).isEqualTo(RANKING_DATE),
-                () -> assertThat(rankingQuery.productId()).isEqualTo(205L),
+                () -> assertThat(dailyRankingQuery.rankDate()).isEqualTo(RANKING_DATE),
+                () -> assertThat(dailyRankingQuery.productId()).isEqualTo(205L),
                 () -> assertThat(result).contains(1L)
             );
         }
@@ -129,19 +129,19 @@ class RankingServiceTest {
         @Test
         void returnsEmpty_whenProductIsNotRanked() {
             // arrange
-            rankingQuery.willReturnEmptyRank();
+            dailyRankingQuery.willReturnEmptyRank();
 
             // act
-            Optional<Long> result = rankingService.getDailyRank(RANKING_DATE, 205L);
+            Optional<Long> result = rankingReadService.getDailyRank(RANKING_DATE, 205L);
 
             // assert
             assertThat(result).isEmpty();
         }
     }
 
-    private static final class FakeRankingQuery implements RankingQuery {
+    private static final class FakeDailyRankingQuery implements DailyRankingQuery {
 
-        private RankingEntries result;
+        private DailyRankingEntries result;
         private LocalDate date;
         private long start;
         private long end;
@@ -150,7 +150,7 @@ class RankingServiceTest {
         private Long productId;
 
         @Override
-        public RankingEntries findDaily(LocalDate date, long start, long end) {
+        public DailyRankingEntries findDaily(LocalDate date, long start, long end) {
             this.date = date;
             this.start = start;
             this.end = end;
@@ -164,7 +164,7 @@ class RankingServiceTest {
             return rank;
         }
 
-        void willReturn(RankingEntries result) {
+        void willReturn(DailyRankingEntries result) {
             this.result = result;
         }
 

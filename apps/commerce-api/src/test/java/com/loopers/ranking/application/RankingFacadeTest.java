@@ -32,7 +32,7 @@ class RankingFacadeTest {
     private static final LocalDate RANKING_DATE = LocalDate.of(2026, 7, 13);
 
     @Mock
-    private RankingService rankingService;
+    private RankingReadService rankingReadService;
 
     @Mock
     private ProductListQuery productListQuery;
@@ -67,7 +67,7 @@ class RankingFacadeTest {
             );
             ProductListInfo product101 = product(101L);
             ProductListInfo product309 = product(309L);
-            when(rankingService.getDailyRanking(RANKING_DATE, pageQuery)).thenReturn(positions);
+            when(rankingReadService.getDailyRanking(RANKING_DATE, pageQuery)).thenReturn(positions);
             when(productListQuery.findVisibleProductsByIds(List.of(205L, 101L, 309L)))
                 .thenReturn(List.of(product309, product101));
 
@@ -104,7 +104,7 @@ class RankingFacadeTest {
                 true,
                 true
             );
-            when(rankingService.getDailyRanking(RANKING_DATE, pageQuery)).thenReturn(positions);
+            when(rankingReadService.getDailyRanking(RANKING_DATE, pageQuery)).thenReturn(positions);
 
             // act
             PageResult<RankingItemInfo> result = rankingFacade.getDailyRankings(RANKING_DATE, 0, 20);
@@ -119,7 +119,7 @@ class RankingFacadeTest {
         void throwsServiceUnavailable_whenRedisRankingLookupFails() {
             // arrange
             PageQuery pageQuery = new PageQuery(0, 20);
-            when(rankingService.getDailyRanking(RANKING_DATE, pageQuery))
+            when(rankingReadService.getDailyRanking(RANKING_DATE, pageQuery))
                 .thenThrow(new RedisConnectionFailureException("redis down"));
 
             // act & assert

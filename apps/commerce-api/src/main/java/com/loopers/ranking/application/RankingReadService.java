@@ -12,14 +12,14 @@ import java.util.stream.IntStream;
 
 @RequiredArgsConstructor
 @Service
-public class RankingService {
+public class RankingReadService {
 
-    private final RankingQuery rankingQuery;
+    private final DailyRankingQuery dailyRankingQuery;
 
     public PageResult<RankingPosition> getDailyRanking(LocalDate date, PageQuery pageQuery) {
         long start = (long) pageQuery.page() * pageQuery.size();
         long end = start + pageQuery.size() - 1;
-        RankingEntries entries = rankingQuery.findDaily(date, start, end);
+        DailyRankingEntries entries = dailyRankingQuery.findDaily(date, start, end);
         int totalPages = totalPages(entries.totalElements(), pageQuery.size());
 
         return new PageResult<>(
@@ -34,7 +34,7 @@ public class RankingService {
     }
 
     public Optional<Long> getDailyRank(LocalDate date, Long productId) {
-        return rankingQuery.findDailyRank(date, productId)
+        return dailyRankingQuery.findDailyRank(date, productId)
             .map(position -> position + 1);
     }
 
