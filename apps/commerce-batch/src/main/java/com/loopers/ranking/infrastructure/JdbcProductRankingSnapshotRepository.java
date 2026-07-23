@@ -88,6 +88,21 @@ public class JdbcProductRankingSnapshotRepository implements ProductRankingSnaps
         );
     }
 
+    @Override
+    public boolean completeIfIncomplete(long snapshotId, Instant completedAt) {
+        int updated = jdbcTemplate.update(
+            """
+                update product_rank_snapshots
+                set completed_at = ?
+                where id = ?
+                  and completed_at is null
+                """,
+            LocalDateTime.ofInstant(completedAt, ZoneOffset.UTC),
+            snapshotId
+        );
+        return updated == 1;
+    }
+
     private ProductRankingSnapshotHeader mapSnapshot(
         ResultSet resultSet,
         int rowNumber

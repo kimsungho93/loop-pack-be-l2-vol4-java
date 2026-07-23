@@ -120,4 +120,29 @@ class JdbcProductRankingSnapshotRepositoryIntegrationTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("V2");
     }
+
+    @DisplayName("미완성 Snapshot은 한 번만 완료 상태로 전환한다.")
+    @Test
+    void completesIncompleteSnapshotOnlyOnce() {
+        // arrange
+        repository.insert(new NewProductRankingSnapshot(
+            SNAPSHOT_KEY,
+            SCORE_POLICY,
+            CREATED_AT
+        ));
+        ProductRankingSnapshotHeader snapshot = repository.findBy(SNAPSHOT_KEY).orElseThrow();
+        Instant completedAt = Instant.parse("2026-07-20T02:10:00.654321Z");
+
+        // act
+        boolean firstResult = repository.completeIfIncomplete(snapshot.id(), completedAt);
+        boolean secondResult = repository.completeIfIncomplete(snapshot.id(), completedAt);
+
+        // assert
+        ProductRankingSnapshotHeader completed = repository.findBy(SNAPSHOT_KEY).orElseThrow();
+        assertAll(
+            () -> assertThat(firstResult).isTrue(),
+            () -> assertThat(secondResult).isFalse(),
+            () -> assertThat(completed.completedAt()).isEqualTo(completedAt)
+        );
+    }
 }

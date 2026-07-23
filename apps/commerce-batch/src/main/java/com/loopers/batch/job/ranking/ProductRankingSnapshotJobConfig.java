@@ -1,6 +1,7 @@
 package com.loopers.batch.job.ranking;
 
 import com.loopers.batch.job.ranking.step.PrepareProductRankingTasklet;
+import com.loopers.batch.job.ranking.step.PublishProductRankingTasklet;
 import com.loopers.batch.job.ranking.step.ProductRankingCandidateWriter;
 import com.loopers.batch.job.ranking.step.ProductRankingScoreProcessor;
 import com.loopers.batch.listener.StepMonitorListener;
@@ -42,6 +43,7 @@ public class ProductRankingSnapshotJobConfig {
     public static final String JOB_NAME = "productRankingSnapshotJob";
     public static final String PREPARE_STEP_NAME = "prepareProductRankingStep";
     public static final String CALCULATE_STEP_NAME = "calculateProductRankingScoresStep";
+    public static final String PUBLISH_STEP_NAME = "publishProductRankingStep";
     public static final String PRODUCT_METRIC_AGGREGATE_READER_NAME =
         "productMetricAggregateReader";
     private static final int PAGE_SIZE = 1_000;
@@ -52,12 +54,21 @@ public class ProductRankingSnapshotJobConfig {
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
     private final StepMonitorListener stepMonitorListener;
-    private final PrepareProductRankingTasklet tasklet;
+    private final PrepareProductRankingTasklet prepareTasklet;
+    private final PublishProductRankingTasklet publishTasklet;
 
     @Bean(PREPARE_STEP_NAME)
     public Step prepareProductRankingStep() {
         return new StepBuilder(PREPARE_STEP_NAME, jobRepository)
-            .tasklet(tasklet, transactionManager)
+            .tasklet(prepareTasklet, transactionManager)
+            .listener(stepMonitorListener)
+            .build();
+    }
+
+    @Bean(PUBLISH_STEP_NAME)
+    public Step publishProductRankingStep() {
+        return new StepBuilder(PUBLISH_STEP_NAME, jobRepository)
+            .tasklet(publishTasklet, transactionManager)
             .listener(stepMonitorListener)
             .build();
     }

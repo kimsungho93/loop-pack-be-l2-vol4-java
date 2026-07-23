@@ -3,6 +3,7 @@ package com.loopers.ranking.infrastructure;
 import com.loopers.ranking.RankingPeriod;
 import com.loopers.ranking.RankingScorePolicy;
 import com.loopers.ranking.application.NewProductRankingSnapshot;
+import com.loopers.ranking.application.ProductRankingAssignment;
 import com.loopers.ranking.application.ProductRankingSnapshotKey;
 import com.loopers.ranking.application.RankingCandidate;
 import com.loopers.utils.DatabaseCleanUp;
@@ -94,7 +95,7 @@ class JdbcProductRankingCandidateRepositoryIntegrationTest {
         );
     }
 
-    @DisplayName("DAILY 후보 저장은 지원하지 않는다.")
+    @DisplayName("DAILY 후보 저장과 순위 부여는 지원하지 않는다.")
     @Test
     void rejectsDailyPeriod() {
         // act & assert
@@ -104,6 +105,50 @@ class JdbcProductRankingCandidateRepositoryIntegrationTest {
         ))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("DAILY");
+        assertThatThrownBy(() -> candidateRepository.assignRanks(
+            RankingPeriod.DAILY,
+            1L,
+            List.of()
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("DAILY");
+    }
+
+    @DisplayName("DB 정렬 순서를 유지해 동점 상품에 결정적인 순위를 저장하고 재조회한다.")
+    @EnumSource(value = RankingPeriod.class, names = {"WEEKLY", "MONTHLY"})
+    @ParameterizedTest
+    void assignsAndFindsRankedProducts(RankingPeriod period) {
+        // arrange
+        long snapshotId = insertSnapshot(period);
+        candidateRepository.upsertAll(period, List.of(
+            new RankingCandidate(snapshotId, 402L, 5.3),
+            new RankingCandidate(snapshotId, 303L, 10.0),
+            new RankingCandidate(snapshotId, 401L, 5.3)
+        ));
+
+        // act
+        List<RankingCandidate> topCandidates =
+            candidateRepository.findTopCandidates(period, snapshotId, 100);
+        List<ProductRankingAssignment> assignments = List.of(
+            new ProductRankingAssignment(303L, 10.0, 1),
+            new ProductRankingAssignment(401L, 5.3, 2),
+            new ProductRankingAssignment(402L, 5.3, 3)
+        );
+        candidateRepository.assignRanks(period, snapshotId, assignments);
+        List<ProductRankingAssignment> rankedProducts =
+            candidateRepository.findRankedProducts(period, snapshotId, 101);
+
+        // assert
+        assertAll(
+            () -> assertThat(candidateRepository.countCandidates(period, snapshotId))
+                .isEqualTo(3),
+            () -> assertThat(topCandidates).containsExactly(
+                new RankingCandidate(snapshotId, 303L, 10.0),
+                new RankingCandidate(snapshotId, 401L, 5.3),
+                new RankingCandidate(snapshotId, 402L, 5.3)
+            ),
+            () -> assertThat(rankedProducts).containsExactlyElementsOf(assignments)
+        );
     }
 
     private long insertSnapshot(RankingPeriod period) {

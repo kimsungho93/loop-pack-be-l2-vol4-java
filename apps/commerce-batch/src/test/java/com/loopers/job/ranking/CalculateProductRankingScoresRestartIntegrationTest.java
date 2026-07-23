@@ -4,6 +4,7 @@ import com.loopers.batch.job.ranking.ProductRankingSnapshotJobConfig;
 import com.loopers.ranking.RankingPeriod;
 import com.loopers.ranking.RankingScorePolicy;
 import com.loopers.ranking.application.NewProductRankingSnapshot;
+import com.loopers.ranking.application.ProductRankingAssignment;
 import com.loopers.ranking.application.ProductRankingCandidateRepository;
 import com.loopers.ranking.application.ProductRankingSnapshotKey;
 import com.loopers.ranking.application.ProductRankingSnapshotRepository;
@@ -230,6 +231,38 @@ class CalculateProductRankingScoresRestartIntegrationTest {
                 throw new DataIntegrityViolationException("forced second chunk failure");
             }
             delegate.upsertAll(period, candidates);
+        }
+
+        @Override
+        public long countCandidates(RankingPeriod period, long snapshotId) {
+            return delegate.countCandidates(period, snapshotId);
+        }
+
+        @Override
+        public List<RankingCandidate> findTopCandidates(
+            RankingPeriod period,
+            long snapshotId,
+            int limit
+        ) {
+            return delegate.findTopCandidates(period, snapshotId, limit);
+        }
+
+        @Override
+        public void assignRanks(
+            RankingPeriod period,
+            long snapshotId,
+            List<ProductRankingAssignment> assignments
+        ) {
+            delegate.assignRanks(period, snapshotId, assignments);
+        }
+
+        @Override
+        public List<ProductRankingAssignment> findRankedProducts(
+            RankingPeriod period,
+            long snapshotId,
+            int limit
+        ) {
+            return delegate.findRankedProducts(period, snapshotId, limit);
         }
 
         void disableFailureAndClearAttempts() {
