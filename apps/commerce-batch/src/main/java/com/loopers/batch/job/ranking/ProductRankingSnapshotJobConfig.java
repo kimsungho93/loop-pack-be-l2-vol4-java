@@ -4,12 +4,15 @@ import com.loopers.batch.job.ranking.step.PrepareProductRankingTasklet;
 import com.loopers.batch.job.ranking.step.PublishProductRankingTasklet;
 import com.loopers.batch.job.ranking.step.ProductRankingCandidateWriter;
 import com.loopers.batch.job.ranking.step.ProductRankingScoreProcessor;
+import com.loopers.batch.listener.JobListener;
 import com.loopers.batch.listener.StepMonitorListener;
 import com.loopers.ranking.application.ProductMetricAggregate;
 import com.loopers.ranking.application.RankingCandidate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
+import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.ItemReader;
@@ -53,9 +56,26 @@ public class ProductRankingSnapshotJobConfig {
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
+    private final JobListener jobListener;
     private final StepMonitorListener stepMonitorListener;
+    private final ProductRankingSnapshotJobParameterValidator parameterValidator;
     private final PrepareProductRankingTasklet prepareTasklet;
     private final PublishProductRankingTasklet publishTasklet;
+
+    @Bean(JOB_NAME)
+    public Job productRankingSnapshotJob(
+        @Qualifier(PREPARE_STEP_NAME) Step prepareStep,
+        @Qualifier(CALCULATE_STEP_NAME) Step calculateStep,
+        @Qualifier(PUBLISH_STEP_NAME) Step publishStep
+    ) {
+        return new JobBuilder(JOB_NAME, jobRepository)
+            .validator(parameterValidator)
+            .start(prepareStep)
+            .next(calculateStep)
+            .next(publishStep)
+            .listener(jobListener)
+            .build();
+    }
 
     @Bean(PREPARE_STEP_NAME)
     public Step prepareProductRankingStep() {
