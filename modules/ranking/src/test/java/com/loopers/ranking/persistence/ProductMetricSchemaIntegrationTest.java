@@ -70,6 +70,26 @@ class ProductMetricSchemaIntegrationTest {
             assertThat(primaryKeyColumns).containsExactly("metric_date", "product_id");
         }
 
+        @DisplayName("상품별 기간 집계를 위한 상품과 날짜 순서의 보조 인덱스를 생성한다")
+        @Test
+        void createsProductLeadingAggregationIndex() {
+            // act
+            List<String> indexColumns = jdbcTemplate.queryForList(
+                """
+                    select column_name
+                    from information_schema.statistics
+                    where table_schema = database()
+                      and table_name = 'product_metrics'
+                      and index_name = 'idx_product_metrics_product_id_metric_date'
+                    order by seq_in_index
+                    """,
+                String.class
+            );
+
+            // assert
+            assertThat(indexColumns).containsExactly("product_id", "metric_date");
+        }
+
         @DisplayName("랭킹 집계에 필요한 일간 지표 컬럼 계약을 생성한다.")
         @Test
         void createsDailyMetricColumnContracts() {

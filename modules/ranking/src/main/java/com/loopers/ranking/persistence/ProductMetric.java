@@ -3,6 +3,7 @@ package com.loopers.ranking.persistence;
 import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -14,7 +15,13 @@ import java.time.Instant;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
-@Table(name = "product_metrics")
+@Table(
+    name = "product_metrics",
+    indexes = @Index(
+        name = "idx_product_metrics_product_id_metric_date",
+        columnList = "product_id, metric_date"
+    )
+)
 public class ProductMetric {
 
     @EmbeddedId

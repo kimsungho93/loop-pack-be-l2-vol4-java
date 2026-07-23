@@ -17,7 +17,6 @@ import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.database.JdbcPagingItemReader;
-import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -135,18 +134,7 @@ public class ProductRankingSnapshotJobConfig {
         return new JdbcPagingItemReaderBuilder<ProductMetricAggregate>()
             .name(PRODUCT_METRIC_AGGREGATE_READER_NAME)
             .dataSource(dataSource)
-            .selectClause("""
-                product_id,
-                sum(view_count) as view_count,
-                sum(like_delta) as like_delta,
-                sum(order_amount) as order_amount
-                """)
-            .fromClause("product_metrics")
-            .whereClause(
-                "metric_date between :periodStart and :aggregationEndDate"
-            )
-            .groupClause("product_id")
-            .sortKeys(Map.of("product_id", Order.ASCENDING))
+            .queryProvider(new ProductMetricAggregateKeysetQueryProvider())
             .parameterValues(Map.of(
                 "periodStart", parameters.periodStart(),
                 "aggregationEndDate", parameters.aggregationEndDate()
