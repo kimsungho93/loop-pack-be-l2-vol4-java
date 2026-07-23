@@ -49,7 +49,6 @@ public class ProductRankingSnapshotJobConfig {
     public static final String PRODUCT_METRIC_AGGREGATE_READER_NAME =
         "productMetricAggregateReader";
     private static final int PAGE_SIZE = 1_000;
-    private static final int CHUNK_SIZE = 1_000;
     private static final int RETRY_LIMIT = 3;
     private static final long RETRY_BACK_OFF_MILLIS = 100;
 
@@ -97,14 +96,15 @@ public class ProductRankingSnapshotJobConfig {
         @Qualifier(PRODUCT_METRIC_AGGREGATE_READER_NAME)
         JdbcPagingItemReader<ProductMetricAggregate> reader,
         ProductRankingScoreProcessor processor,
-        ProductRankingCandidateWriter writer
+        ProductRankingCandidateWriter writer,
+        @Value("${commerce.ranking.batch.chunk-size}") int chunkSize
     ) {
         RetryTemplate readRetryTemplate = transientDatabaseReadRetryTemplate();
         ItemReader<ProductMetricAggregate> retryingReader = () ->
             readRetryTemplate.execute(context -> reader.read());
 
         return new StepBuilder(CALCULATE_STEP_NAME, jobRepository)
-            .<ProductMetricAggregate, RankingCandidate>chunk(CHUNK_SIZE, transactionManager)
+            .<ProductMetricAggregate, RankingCandidate>chunk(chunkSize, transactionManager)
             .reader(retryingReader)
             .stream(reader)
             .processor(processor)

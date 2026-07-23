@@ -44,7 +44,8 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 
 @SpringBootTest(properties = {
     "spring.batch.job.name=" + ProductRankingSnapshotJobConfig.JOB_NAME,
-    "spring.batch.job.enabled=false"
+    "spring.batch.job.enabled=false",
+    "commerce.ranking.batch.chunk-size=2"
 })
 @SpringBatchTest
 @Import(CalculateProductRankingScoresStepIntegrationTest.TestJobConfiguration.class)
@@ -118,6 +119,7 @@ class CalculateProductRankingScoresStepIntegrationTest {
                 .isEqualTo(ProductRankingSnapshotJobConfig.CALCULATE_STEP_NAME),
             () -> assertThat(stepExecution.getReadCount()).isEqualTo(expectedCount),
             () -> assertThat(stepExecution.getWriteCount()).isEqualTo(expectedCount),
+            () -> assertThat(stepExecution.getCommitCount()).isEqualTo(2),
             () -> assertThat(stepExecution.getSkipCount()).isZero(),
             () -> assertThat(candidates).hasSize(expectedCount),
             () -> assertThat(candidates).allSatisfy(
