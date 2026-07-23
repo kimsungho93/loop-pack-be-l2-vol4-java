@@ -265,6 +265,15 @@ class CalculateProductRankingScoresRestartIntegrationTest {
             return delegate.findRankedProducts(period, snapshotId, limit);
         }
 
+        @Override
+        public int deleteUnrankedCandidates(
+            RankingPeriod period,
+            long snapshotId,
+            int limit
+        ) {
+            return delegate.deleteUnrankedCandidates(period, snapshotId, limit);
+        }
+
         void disableFailureAndClearAttempts() {
             failureEnabled = false;
             batchSizes.clear();

@@ -211,6 +211,16 @@ class ProductRankingSnapshotJobRestartIntegrationTest {
         }
 
         @Override
+        public Optional<ProductRankingSnapshotHeader> findById(long snapshotId) {
+            return delegate.findById(snapshotId);
+        }
+
+        @Override
+        public boolean existsNewerCompletedThan(ProductRankingSnapshotKey key) {
+            return delegate.existsNewerCompletedThan(key);
+        }
+
+        @Override
         public void insert(NewProductRankingSnapshot snapshot) {
             delegate.insert(snapshot);
         }

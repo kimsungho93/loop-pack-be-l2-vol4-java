@@ -66,6 +66,13 @@ public class JdbcProductRankingCandidateRepository
               and rank_no is not null
             order by rank_no asc
             limit ?
+            """,
+        """
+            delete from mv_product_rank_weekly
+            where snapshot_id = ?
+              and rank_no is null
+            order by product_id
+            limit ?
             """
     );
     private static final CandidateQueries MONTHLY_QUERIES = new CandidateQueries(
@@ -94,6 +101,13 @@ public class JdbcProductRankingCandidateRepository
             where snapshot_id = ?
               and rank_no is not null
             order by rank_no asc
+            limit ?
+            """,
+        """
+            delete from mv_product_rank_monthly
+            where snapshot_id = ?
+              and rank_no is null
+            order by product_id
             limit ?
             """
     );
@@ -197,6 +211,19 @@ public class JdbcProductRankingCandidateRepository
         );
     }
 
+    @Override
+    public int deleteUnrankedCandidates(
+        RankingPeriod period,
+        long snapshotId,
+        int limit
+    ) {
+        return jdbcTemplate.update(
+            queries(period).deleteUnrankedCandidatesSql(),
+            snapshotId,
+            limit
+        );
+    }
+
     private CandidateQueries queries(RankingPeriod period) {
         return switch (period) {
             case WEEKLY -> WEEKLY_QUERIES;
@@ -211,7 +238,8 @@ public class JdbcProductRankingCandidateRepository
         String countSql,
         String topCandidatesSql,
         String assignRanksSql,
-        String rankedProductsSql
+        String rankedProductsSql,
+        String deleteUnrankedCandidatesSql
     ) {
     }
 }

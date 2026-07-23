@@ -42,6 +42,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -206,6 +207,18 @@ class PublishProductRankingAtomicityIntegrationTest {
             ProductRankingSnapshotKey key
         ) {
             return delegate.findBy(key);
+        }
+
+        @Override
+        public Optional<ProductRankingSnapshotHeader> findById(
+            long snapshotId
+        ) {
+            return delegate.findById(snapshotId);
+        }
+
+        @Override
+        public boolean existsNewerCompletedThan(ProductRankingSnapshotKey key) {
+            return delegate.existsNewerCompletedThan(key);
         }
 
         @Override

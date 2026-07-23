@@ -54,6 +54,58 @@ public class JdbcProductRankingSnapshotRepository implements ProductRankingSnaps
     }
 
     @Override
+    public Optional<ProductRankingSnapshotHeader> findById(long snapshotId) {
+        return jdbcTemplate.query(
+            """
+                select
+                    id,
+                    period,
+                    period_start,
+                    aggregation_end_date,
+                    revision,
+                    score_policy_version,
+                    view_weight,
+                    like_weight,
+                    order_weight,
+                    order_amount_unit,
+                    created_at,
+                    completed_at
+                from product_rank_snapshots
+                where id = ?
+                """,
+            this::mapSnapshot,
+            snapshotId
+        ).stream().findFirst();
+    }
+
+    @Override
+    public boolean existsNewerCompletedThan(ProductRankingSnapshotKey key) {
+        Integer exists = jdbcTemplate.queryForObject(
+            """
+                select exists(
+                    select 1
+                    from product_rank_snapshots
+                    where period = ?
+                      and completed_at is not null
+                      and (
+                          aggregation_end_date > ?
+                          or (
+                              aggregation_end_date = ?
+                              and revision > ?
+                          )
+                      )
+                )
+                """,
+            Integer.class,
+            key.period().name(),
+            key.aggregationEndDate(),
+            key.aggregationEndDate(),
+            key.revision()
+        );
+        return exists != null && exists == 1;
+    }
+
+    @Override
     public void insert(NewProductRankingSnapshot snapshot) {
         ProductRankingSnapshotKey key = snapshot.key();
         RankingScorePolicy policy = snapshot.scorePolicy();

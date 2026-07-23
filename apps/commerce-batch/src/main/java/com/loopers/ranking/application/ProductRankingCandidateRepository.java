@@ -30,4 +30,10 @@ public interface ProductRankingCandidateRepository {
         long snapshotId,
         int limit
     );
+
+    int deleteUnrankedCandidates(
+        RankingPeriod period,
+        long snapshotId,
+        int limit
+    );
 }

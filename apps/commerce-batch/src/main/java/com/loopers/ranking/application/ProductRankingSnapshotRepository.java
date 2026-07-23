@@ -7,6 +7,10 @@ public interface ProductRankingSnapshotRepository {
 
     Optional<ProductRankingSnapshotHeader> findBy(ProductRankingSnapshotKey key);
 
+    Optional<ProductRankingSnapshotHeader> findById(long snapshotId);
+
+    boolean existsNewerCompletedThan(ProductRankingSnapshotKey key);
+
     void insert(NewProductRankingSnapshot snapshot);
 
     boolean completeIfIncomplete(long snapshotId, Instant completedAt);

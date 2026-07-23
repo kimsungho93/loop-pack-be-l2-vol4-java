@@ -112,6 +112,13 @@ class JdbcProductRankingCandidateRepositoryIntegrationTest {
         ))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("DAILY");
+        assertThatThrownBy(() -> candidateRepository.deleteUnrankedCandidates(
+            RankingPeriod.DAILY,
+            1L,
+            1_000
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("DAILY");
     }
 
     @DisplayName("DB 정렬 순서를 유지해 동점 상품에 결정적인 순위를 저장하고 재조회한다.")
@@ -148,6 +155,69 @@ class JdbcProductRankingCandidateRepositoryIntegrationTest {
                 new RankingCandidate(snapshotId, 402L, 5.3)
             ),
             () -> assertThat(rankedProducts).containsExactlyElementsOf(assignments)
+        );
+    }
+
+    @DisplayName("대상 Snapshot의 탈락 후보만 제한된 수만큼 상품 ID 순서로 삭제한다.")
+    @EnumSource(value = RankingPeriod.class, names = {"WEEKLY", "MONTHLY"})
+    @ParameterizedTest
+    void deletesOnlyLimitedUnrankedCandidates(RankingPeriod period) {
+        // arrange
+        long snapshotId = insertSnapshot(period);
+        candidateRepository.upsertAll(period, List.of(
+            new RankingCandidate(snapshotId, 101L, 10.0),
+            new RankingCandidate(snapshotId, 202L, 7.0),
+            new RankingCandidate(snapshotId, 303L, 5.0),
+            new RankingCandidate(snapshotId, 404L, 3.0)
+        ));
+        candidateRepository.assignRanks(
+            period,
+            snapshotId,
+            List.of(new ProductRankingAssignment(101L, 10.0, 1))
+        );
+
+        // act
+        int firstDeleted = candidateRepository.deleteUnrankedCandidates(
+            period,
+            snapshotId,
+            2
+        );
+        List<Long> productIdsAfterFirstDelete = jdbcTemplate.queryForList(
+            "select product_id from " + tableName(period)
+                + " where snapshot_id = ? order by product_id",
+            Long.class,
+            snapshotId
+        );
+        int secondDeleted = candidateRepository.deleteUnrankedCandidates(
+            period,
+            snapshotId,
+            2
+        );
+        int thirdDeleted = candidateRepository.deleteUnrankedCandidates(
+            period,
+            snapshotId,
+            2
+        );
+
+        // assert
+        List<Long> remainingProductIds = jdbcTemplate.queryForList(
+            "select product_id from " + tableName(period)
+                + " where snapshot_id = ? order by product_id",
+            Long.class,
+            snapshotId
+        );
+        assertAll(
+            () -> assertThat(firstDeleted).isEqualTo(2),
+            () -> assertThat(productIdsAfterFirstDelete)
+                .containsExactly(101L, 404L),
+            () -> assertThat(secondDeleted).isEqualTo(1),
+            () -> assertThat(thirdDeleted).isZero(),
+            () -> assertThat(remainingProductIds).containsExactly(101L),
+            () -> assertThat(candidateRepository.findRankedProducts(
+                period,
+                snapshotId,
+                101
+            )).containsExactly(new ProductRankingAssignment(101L, 10.0, 1))
         );
     }
 
