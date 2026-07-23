@@ -41,6 +41,20 @@ spring:
 spring:
   config:
     activate:
+      on-profile: perf-seed
+  batch:
+    job:
+      enabled: false
+
+commerce:
+  ranking:
+    perf-seed:
+      expected-database: ${PERF_SEED_EXPECTED_DATABASE}
+
+---
+spring:
+  config:
+    activate:
       on-profile: dev
 
 ---
