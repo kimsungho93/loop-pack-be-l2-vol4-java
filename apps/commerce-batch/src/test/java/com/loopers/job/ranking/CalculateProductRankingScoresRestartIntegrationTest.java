@@ -50,7 +50,8 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 
 @SpringBootTest(properties = {
     "spring.batch.job.name=" + ProductRankingSnapshotJobConfig.JOB_NAME,
-    "spring.batch.job.enabled=false"
+    "spring.batch.job.enabled=false",
+    "commerce.ranking.batch.chunk-size=1000"
 })
 @SpringBatchTest
 @Import(CalculateProductRankingScoresRestartIntegrationTest.TestJobConfiguration.class)

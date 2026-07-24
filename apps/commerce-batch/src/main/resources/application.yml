@@ -21,7 +21,7 @@ spring:
 commerce:
   ranking:
     batch:
-      chunk-size: ${RANKING_BATCH_CHUNK_SIZE:1000}
+      chunk-size: ${RANKING_BATCH_CHUNK_SIZE:5000}
     cold-start:
       carry-over-rate: 0.1
 
