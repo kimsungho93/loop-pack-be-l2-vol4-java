@@ -23,6 +23,7 @@ public class ProductRankingPublicationService {
 
     private final ProductRankingSnapshotRepository snapshotRepository;
     private final ProductRankingCandidateRepository candidateRepository;
+    private final ProductRankingResultRepository resultRepository;
     private final ProductRankingSourceQuery sourceQuery;
     private final Clock clock;
 
@@ -45,12 +46,11 @@ public class ProductRankingPublicationService {
             snapshot,
             candidateCount,
             candidateRepository.findTopCandidates(
-                snapshot.key().period(),
                 snapshot.id(),
                 TOP_LIMIT
             )
         );
-        candidateRepository.assignRanks(
+        resultRepository.insertAll(
             snapshot.key().period(),
             snapshot.id(),
             expectedRankings
@@ -77,10 +77,7 @@ public class ProductRankingPublicationService {
             key.periodStart(),
             key.aggregationEndDate()
         );
-        long candidateCount = candidateRepository.countCandidates(
-            key.period(),
-            snapshot.id()
-        );
+        long candidateCount = candidateRepository.countCandidates(snapshot.id());
         if (sourceCount != candidateCount) {
             throw new IllegalStateException(
                 "source product count and candidate count do not match: source=%d, candidate=%d"
@@ -92,7 +89,7 @@ public class ProductRankingPublicationService {
 
     private void validateNoExistingRanks(ProductRankingSnapshotHeader snapshot) {
         List<ProductRankingAssignment> existingRanks =
-            candidateRepository.findRankedProducts(
+            resultRepository.findPublishedRankings(
                 snapshot.key().period(),
                 snapshot.id(),
                 1
@@ -140,7 +137,7 @@ public class ProductRankingPublicationService {
     private List<ProductRankingAssignment> findPublishedRankings(
         ProductRankingSnapshotHeader snapshot
     ) {
-        return candidateRepository.findRankedProducts(
+        return resultRepository.findPublishedRankings(
             snapshot.key().period(),
             snapshot.id(),
             VERIFICATION_LIMIT

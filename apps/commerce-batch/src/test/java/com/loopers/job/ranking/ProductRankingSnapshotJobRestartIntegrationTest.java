@@ -5,6 +5,7 @@ import com.loopers.ranking.RankingPeriod;
 import com.loopers.ranking.application.NewProductRankingSnapshot;
 import com.loopers.ranking.application.ProductRankingAssignment;
 import com.loopers.ranking.application.ProductRankingCandidateRepository;
+import com.loopers.ranking.application.ProductRankingResultRepository;
 import com.loopers.ranking.application.ProductRankingSnapshotHeader;
 import com.loopers.ranking.application.ProductRankingSnapshotKey;
 import com.loopers.ranking.application.ProductRankingSnapshotRepository;
@@ -78,6 +79,9 @@ class ProductRankingSnapshotJobRestartIntegrationTest {
     private ProductRankingCandidateRepository candidateRepository;
 
     @Autowired
+    private ProductRankingResultRepository resultRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -129,11 +133,9 @@ class ProductRankingSnapshotJobRestartIntegrationTest {
                         BatchStatus.FAILED
                     )
                 ),
-            () -> assertThat(candidateRepository.countCandidates(
-                RankingPeriod.WEEKLY,
-                incomplete.id()
-            )).isEqualTo(1),
-            () -> assertThat(candidateRepository.findRankedProducts(
+            () -> assertThat(candidateRepository.countCandidates(incomplete.id()))
+                .isEqualTo(1),
+            () -> assertThat(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 incomplete.id(),
                 101
@@ -156,7 +158,7 @@ class ProductRankingSnapshotJobRestartIntegrationTest {
             () -> assertThat(restartedExecution.getStepExecutions())
                 .extracting(StepExecution::getStepName)
                 .containsExactly(ProductRankingSnapshotJobConfig.PUBLISH_STEP_NAME),
-            () -> assertThat(candidateRepository.findRankedProducts(
+            () -> assertThat(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 completed.id(),
                 101

@@ -4,7 +4,6 @@ import com.loopers.batch.job.ranking.ProductRankingCleanupJobConfig;
 import com.loopers.ranking.RankingPeriod;
 import com.loopers.ranking.RankingScorePolicy;
 import com.loopers.ranking.application.NewProductRankingSnapshot;
-import com.loopers.ranking.application.ProductRankingAssignment;
 import com.loopers.ranking.application.ProductRankingCandidateRepository;
 import com.loopers.ranking.application.ProductRankingSnapshotHeader;
 import com.loopers.ranking.application.ProductRankingSnapshotKey;
@@ -33,6 +32,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.dao.TransientDataAccessResourceException;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -72,6 +72,9 @@ class ProductRankingCleanupJobRestartIntegrationTest {
     private FailingCleanupCandidateRepository candidateRepository;
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
     @BeforeEach
@@ -100,7 +103,8 @@ class ProductRankingCleanupJobRestartIntegrationTest {
                 productId
             ))
             .toList();
-        candidateRepository.upsertAll(RankingPeriod.WEEKLY, candidates);
+        candidateRepository.upsertAll(candidates);
+        insertPublishedRanking(target.id());
 
         JobParameters parameters = jobParameters(target.id());
 
@@ -112,10 +116,9 @@ class ProductRankingCleanupJobRestartIntegrationTest {
         assertAll(
             () -> assertThat(failedExecution.getStatus())
                 .isEqualTo(BatchStatus.FAILED),
-            () -> assertThat(candidateRepository.countCandidates(
-                RankingPeriod.WEEKLY,
-                target.id()
-            )).isEqualTo(1)
+            () -> assertThat(candidateRepository.countCandidates(target.id()))
+                .isEqualTo(1),
+            () -> assertThat(countPublishedRankings(target.id())).isEqualTo(1)
         );
 
         // act
@@ -129,10 +132,9 @@ class ProductRankingCleanupJobRestartIntegrationTest {
                 .isEqualTo(ExitStatus.COMPLETED),
             () -> assertThat(restartedExecution.getJobInstance().getInstanceId())
                 .isEqualTo(failedExecution.getJobInstance().getInstanceId()),
-            () -> assertThat(candidateRepository.countCandidates(
-                RankingPeriod.WEEKLY,
-                target.id()
-            )).isZero(),
+            () -> assertThat(candidateRepository.countCandidates(target.id()))
+                .isZero(),
+            () -> assertThat(countPublishedRankings(target.id())).isEqualTo(1),
             () -> assertThat(
                 snapshotRepository.findById(target.id()).orElseThrow().completedAt()
             ).isEqualTo(COMPLETED_AT)
@@ -164,6 +166,33 @@ class ProductRankingCleanupJobRestartIntegrationTest {
             .toJobParameters();
     }
 
+    private void insertPublishedRanking(long snapshotId) {
+        jdbcTemplate.update(
+            """
+                insert into mv_product_rank_weekly(
+                    snapshot_id,
+                    product_id,
+                    rank_no,
+                    score
+                )
+                values (?, 1, 1, 1.0)
+                """,
+            snapshotId
+        );
+    }
+
+    private long countPublishedRankings(long snapshotId) {
+        return jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from mv_product_rank_weekly
+                where snapshot_id = ?
+                """,
+            Long.class,
+            snapshotId
+        );
+    }
+
     static class FailingCleanupCandidateRepository
         implements ProductRankingCandidateRepository {
 
@@ -178,62 +207,32 @@ class ProductRankingCleanupJobRestartIntegrationTest {
         }
 
         @Override
-        public void upsertAll(
-            RankingPeriod period,
-            List<? extends RankingCandidate> candidates
-        ) {
-            delegate.upsertAll(period, candidates);
+        public void upsertAll(List<? extends RankingCandidate> candidates) {
+            delegate.upsertAll(candidates);
         }
 
         @Override
-        public long countCandidates(RankingPeriod period, long snapshotId) {
-            return delegate.countCandidates(period, snapshotId);
+        public long countCandidates(long snapshotId) {
+            return delegate.countCandidates(snapshotId);
         }
 
         @Override
         public List<RankingCandidate> findTopCandidates(
-            RankingPeriod period,
             long snapshotId,
             int limit
         ) {
-            return delegate.findTopCandidates(period, snapshotId, limit);
+            return delegate.findTopCandidates(snapshotId, limit);
         }
 
         @Override
-        public void assignRanks(
-            RankingPeriod period,
-            long snapshotId,
-            List<ProductRankingAssignment> assignments
-        ) {
-            delegate.assignRanks(period, snapshotId, assignments);
-        }
-
-        @Override
-        public List<ProductRankingAssignment> findRankedProducts(
-            RankingPeriod period,
-            long snapshotId,
-            int limit
-        ) {
-            return delegate.findRankedProducts(period, snapshotId, limit);
-        }
-
-        @Override
-        public int deleteUnrankedCandidates(
-            RankingPeriod period,
-            long snapshotId,
-            int limit
-        ) {
+        public int deleteCandidates(long snapshotId, int limit) {
             deleteAttempts++;
             if (failureEnabled && deleteAttempts == 2) {
                 throw new TransientDataAccessResourceException(
                     "forced second delete failure"
                 );
             }
-            return delegate.deleteUnrankedCandidates(
-                period,
-                snapshotId,
-                limit
-            );
+            return delegate.deleteCandidates(snapshotId, limit);
         }
 
         void allowDeletes() {

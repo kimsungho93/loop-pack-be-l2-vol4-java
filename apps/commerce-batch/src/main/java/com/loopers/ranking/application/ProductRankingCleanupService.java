@@ -31,14 +31,10 @@ public class ProductRankingCleanupService {
         return target;
     }
 
-    public int deleteUnrankedCandidates(
+    public int deleteCandidates(
         ProductRankingSnapshotHeader target,
         int limit
     ) {
-        return candidateRepository.deleteUnrankedCandidates(
-            target.key().period(),
-            target.id(),
-            limit
-        );
+        return candidateRepository.deleteCandidates(target.id(), limit);
     }
 }

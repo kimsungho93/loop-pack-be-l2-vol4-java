@@ -30,6 +30,7 @@ import org.springframework.batch.test.context.SpringBatchTest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -67,6 +68,9 @@ class ProductRankingCleanupJobE2ETest {
     private ProductRankingCandidateRepository candidateRepository;
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
     @BeforeEach
@@ -80,10 +84,12 @@ class ProductRankingCleanupJobE2ETest {
         databaseCleanUp.truncateAllTables();
     }
 
-    @DisplayName("같은 기간의 다음 완료본이 있으면 이전 Snapshot의 탈락 후보만 삭제한다.")
+    @DisplayName("같은 기간의 다음 완료본이 있으면 이전 Snapshot의 후보만 삭제하고 공개 순위는 유지한다.")
     @EnumSource(value = RankingPeriod.class, names = {"WEEKLY", "MONTHLY"})
     @ParameterizedTest
-    void deletesOnlyObsoleteUnrankedCandidates(RankingPeriod period) throws Exception {
+    void deletesObsoleteCandidatesAndPreservesPublishedRankings(
+        RankingPeriod period
+    ) throws Exception {
         // arrange
         ProductRankingSnapshotHeader target = insertCompletedSnapshot(
             period,
@@ -95,7 +101,7 @@ class ProductRankingCleanupJobE2ETest {
             LocalDate.of(2026, 7, 19),
             1
         );
-        candidateRepository.upsertAll(period, List.of(
+        candidateRepository.upsertAll(List.of(
             new RankingCandidate(target.id(), 101L, 10.0),
             new RankingCandidate(target.id(), 202L, 7.0),
             new RankingCandidate(target.id(), 303L, 5.0),
@@ -103,13 +109,9 @@ class ProductRankingCleanupJobE2ETest {
         ));
         ProductRankingAssignment published =
             new ProductRankingAssignment(101L, 10.0, 1);
-        candidateRepository.assignRanks(
-            period,
-            target.id(),
-            List.of(published)
-        );
+        insertPublishedRanking(period, target.id(), published);
         List<ProductRankingAssignment> publishedBeforeCleanup =
-            candidateRepository.findRankedProducts(period, target.id(), 101);
+            findPublishedRankings(period, target.id());
 
         // act
         JobExecution execution =
@@ -126,19 +128,12 @@ class ProductRankingCleanupJobE2ETest {
                 .containsExactly(
                     ProductRankingCleanupJobConfig.DELETE_OBSOLETE_CANDIDATES_STEP_NAME
                 ),
-            () -> assertThat(candidateRepository.countCandidates(
-                period,
-                target.id()
-            )).isEqualTo(1),
-            () -> assertThat(candidateRepository.findRankedProducts(
-                period,
-                target.id(),
-                101
-            )).isEqualTo(publishedBeforeCleanup),
-            () -> assertThat(candidateRepository.countCandidates(
-                period,
-                latest.id()
-            )).isEqualTo(1),
+            () -> assertThat(candidateRepository.countCandidates(target.id()))
+                .isZero(),
+            () -> assertThat(findPublishedRankings(period, target.id()))
+                .isEqualTo(publishedBeforeCleanup),
+            () -> assertThat(candidateRepository.countCandidates(latest.id()))
+                .isEqualTo(1),
             () -> assertThat(targetAfterCleanup.completedAt())
                 .isEqualTo(COMPLETED_AT)
         );
@@ -153,10 +148,9 @@ class ProductRankingCleanupJobE2ETest {
             LocalDate.of(2026, 7, 19),
             1
         );
-        candidateRepository.upsertAll(
-            RankingPeriod.WEEKLY,
-            List.of(new RankingCandidate(latest.id(), 101L, 10.0))
-        );
+        candidateRepository.upsertAll(List.of(
+            new RankingCandidate(latest.id(), 101L, 10.0)
+        ));
 
         // act
         JobExecution execution =
@@ -165,10 +159,8 @@ class ProductRankingCleanupJobE2ETest {
         // assert
         assertAll(
             () -> assertThat(execution.getStatus()).isEqualTo(BatchStatus.FAILED),
-            () -> assertThat(candidateRepository.countCandidates(
-                RankingPeriod.WEEKLY,
-                latest.id()
-            )).isEqualTo(1),
+            () -> assertThat(candidateRepository.countCandidates(latest.id()))
+                .isEqualTo(1),
             () -> assertThat(
                 snapshotRepository.findById(latest.id()).orElseThrow().completedAt()
             ).isEqualTo(COMPLETED_AT)
@@ -189,10 +181,9 @@ class ProductRankingCleanupJobE2ETest {
             LocalDate.of(2026, 7, 19),
             1
         );
-        candidateRepository.upsertAll(
-            RankingPeriod.WEEKLY,
-            List.of(new RankingCandidate(incomplete.id(), 101L, 10.0))
-        );
+        candidateRepository.upsertAll(List.of(
+            new RankingCandidate(incomplete.id(), 101L, 10.0)
+        ));
 
         // act
         JobExecution execution =
@@ -201,19 +192,17 @@ class ProductRankingCleanupJobE2ETest {
         // assert
         assertAll(
             () -> assertThat(execution.getStatus()).isEqualTo(BatchStatus.FAILED),
-            () -> assertThat(candidateRepository.countCandidates(
-                RankingPeriod.WEEKLY,
-                incomplete.id()
-            )).isEqualTo(1),
+            () -> assertThat(candidateRepository.countCandidates(incomplete.id()))
+                .isEqualTo(1),
             () -> assertThat(
                 snapshotRepository.findById(incomplete.id()).orElseThrow().completedAt()
             ).isNull()
         );
     }
 
-    @DisplayName("이미 탈락 후보가 없는 유효한 과거 Snapshot은 멱등하게 성공한다.")
+    @DisplayName("이미 후보가 없는 유효한 과거 Snapshot은 멱등하게 성공한다.")
     @Test
-    void completesWhenEligibleTargetHasNoUnrankedCandidate() throws Exception {
+    void completesWhenEligibleTargetHasNoCandidate() throws Exception {
         // arrange
         ProductRankingSnapshotHeader target = insertCompletedSnapshot(
             RankingPeriod.WEEKLY,
@@ -267,5 +256,48 @@ class ProductRankingCleanupJobE2ETest {
         return new JobParametersBuilder()
             .addLong("targetSnapshotId", targetSnapshotId)
             .toJobParameters();
+    }
+
+    private void insertPublishedRanking(
+        RankingPeriod period,
+        long snapshotId,
+        ProductRankingAssignment ranking
+    ) {
+        jdbcTemplate.update(
+            "insert into " + tableName(period)
+                + "(snapshot_id, product_id, rank_no, score) values (?, ?, ?, ?)",
+            snapshotId,
+            ranking.productId(),
+            ranking.rankNo(),
+            ranking.score()
+        );
+    }
+
+    private List<ProductRankingAssignment> findPublishedRankings(
+        RankingPeriod period,
+        long snapshotId
+    ) {
+        return jdbcTemplate.query(
+            """
+                select product_id, score, rank_no
+                from %s
+                where snapshot_id = ?
+                order by rank_no
+                """.formatted(tableName(period)),
+            (resultSet, rowNumber) -> new ProductRankingAssignment(
+                resultSet.getLong("product_id"),
+                resultSet.getDouble("score"),
+                resultSet.getInt("rank_no")
+            ),
+            snapshotId
+        );
+    }
+
+    private String tableName(RankingPeriod period) {
+        return switch (period) {
+            case WEEKLY -> "mv_product_rank_weekly";
+            case MONTHLY -> "mv_product_rank_monthly";
+            case DAILY -> throw new IllegalArgumentException("DAILY is not supported");
+        };
     }
 }

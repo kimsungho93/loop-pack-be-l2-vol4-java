@@ -5,27 +5,26 @@ import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.Check;
 
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
 @Table(
-    name = "mv_product_rank_monthly",
-    uniqueConstraints = @UniqueConstraint(
-        name = "uk_mv_product_rank_monthly_snapshot_id_rank_no",
-        columnNames = {"snapshot_id", "rank_no"}
+    name = "product_rank_candidates",
+    indexes = @Index(
+        name = "idx_product_rank_candidates_snapshot_score_product",
+        columnList = "snapshot_id, score DESC, product_id ASC"
     )
 )
-public class MonthlyProductRank {
+public class ProductRankCandidate {
 
     @EmbeddedId
     private ProductRankId id;
@@ -36,7 +35,7 @@ public class MonthlyProductRank {
         name = "snapshot_id",
         nullable = false,
         foreignKey = @ForeignKey(
-            name = "fk_mv_product_rank_monthly_snapshot_id",
+            name = "fk_product_rank_candidates_snapshot_id",
             foreignKeyDefinition = """
                 foreign key (snapshot_id)
                 references product_rank_snapshots(id)
@@ -45,13 +44,6 @@ public class MonthlyProductRank {
         )
     )
     private ProductRankSnapshot snapshot;
-
-    @Check(
-        name = "ck_mv_product_rank_monthly_rank_no_range",
-        constraints = "rank_no between 1 and 100"
-    )
-    @Column(name = "rank_no", nullable = false)
-    private int rankNo;
 
     @Column(name = "score", nullable = false)
     private double score;

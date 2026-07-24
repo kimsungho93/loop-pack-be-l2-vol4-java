@@ -4,7 +4,6 @@ import com.loopers.batch.job.ranking.ProductRankingSnapshotJobConfig;
 import com.loopers.ranking.RankingPeriod;
 import com.loopers.ranking.RankingScorePolicy;
 import com.loopers.ranking.application.NewProductRankingSnapshot;
-import com.loopers.ranking.application.ProductRankingAssignment;
 import com.loopers.ranking.application.ProductRankingCandidateRepository;
 import com.loopers.ranking.application.ProductRankingSnapshotKey;
 import com.loopers.ranking.application.ProductRankingSnapshotRepository;
@@ -135,11 +134,11 @@ class CalculateProductRankingScoresRestartIntegrationTest {
         // assert
         StepExecution restartedStep = restartedExecution.getStepExecutions().iterator().next();
         Double minimumScore = jdbcTemplate.queryForObject(
-            "select min(score) from mv_product_rank_weekly",
+            "select min(score) from product_rank_candidates",
             Double.class
         );
         Double maximumScore = jdbcTemplate.queryForObject(
-            "select max(score) from mv_product_rank_weekly",
+            "select max(score) from product_rank_candidates",
             Double.class
         );
         assertAll(
@@ -152,7 +151,7 @@ class CalculateProductRankingScoresRestartIntegrationTest {
             () -> assertThat(failingCandidateRepository.batchSizes())
                 .containsExactly(1),
             () -> assertThat(countCandidates()).isEqualTo(1_001),
-            () -> assertThat(countRankedCandidates()).isZero(),
+            () -> assertThat(countPublishedRankings()).isZero(),
             () -> assertThat(minimumScore).isCloseTo(0.1, offset(1.0e-10)),
             () -> assertThat(maximumScore).isCloseTo(0.1, offset(1.0e-10))
         );
@@ -197,14 +196,14 @@ class CalculateProductRankingScoresRestartIntegrationTest {
 
     private long countCandidates() {
         return jdbcTemplate.queryForObject(
-            "select count(*) from mv_product_rank_weekly",
+            "select count(*) from product_rank_candidates",
             Long.class
         );
     }
 
-    private long countRankedCandidates() {
+    private long countPublishedRankings() {
         return jdbcTemplate.queryForObject(
-            "select count(*) from mv_product_rank_weekly where rank_no is not null",
+            "select count(*) from mv_product_rank_weekly",
             Long.class
         );
     }
@@ -221,58 +220,32 @@ class CalculateProductRankingScoresRestartIntegrationTest {
         }
 
         @Override
-        public void upsertAll(
-            RankingPeriod period,
-            List<? extends RankingCandidate> candidates
-        ) {
+        public void upsertAll(List<? extends RankingCandidate> candidates) {
             batchSizes.add(candidates.size());
             boolean containsLastProduct = candidates.stream()
                 .anyMatch(candidate -> candidate.productId() == 1_001L);
             if (failureEnabled && containsLastProduct) {
                 throw new DataIntegrityViolationException("forced second chunk failure");
             }
-            delegate.upsertAll(period, candidates);
+            delegate.upsertAll(candidates);
         }
 
         @Override
-        public long countCandidates(RankingPeriod period, long snapshotId) {
-            return delegate.countCandidates(period, snapshotId);
+        public long countCandidates(long snapshotId) {
+            return delegate.countCandidates(snapshotId);
         }
 
         @Override
         public List<RankingCandidate> findTopCandidates(
-            RankingPeriod period,
             long snapshotId,
             int limit
         ) {
-            return delegate.findTopCandidates(period, snapshotId, limit);
+            return delegate.findTopCandidates(snapshotId, limit);
         }
 
         @Override
-        public void assignRanks(
-            RankingPeriod period,
-            long snapshotId,
-            List<ProductRankingAssignment> assignments
-        ) {
-            delegate.assignRanks(period, snapshotId, assignments);
-        }
-
-        @Override
-        public List<ProductRankingAssignment> findRankedProducts(
-            RankingPeriod period,
-            long snapshotId,
-            int limit
-        ) {
-            return delegate.findRankedProducts(period, snapshotId, limit);
-        }
-
-        @Override
-        public int deleteUnrankedCandidates(
-            RankingPeriod period,
-            long snapshotId,
-            int limit
-        ) {
-            return delegate.deleteUnrankedCandidates(period, snapshotId, limit);
+        public int deleteCandidates(long snapshotId, int limit) {
+            return delegate.deleteCandidates(snapshotId, limit);
         }
 
         void disableFailureAndClearAttempts() {

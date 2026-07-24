@@ -43,7 +43,6 @@ import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -153,7 +152,7 @@ class CalculateProductRankingScoresRetryIntegrationTest {
         // arrange
         doThrow(new CannotAcquireLockException("lock"))
             .when(candidateRepository)
-            .upsertAll(eq(RankingPeriod.WEEKLY), anyList());
+            .upsertAll(anyList());
 
         // act
         JobExecution execution = jobLauncherTestUtils.launchJob(jobParameters());
@@ -164,7 +163,7 @@ class CalculateProductRankingScoresRetryIntegrationTest {
             () -> assertThat(execution.getExitStatus().getExitCode())
                 .isEqualTo(ExitStatus.FAILED.getExitCode()),
             () -> verify(candidateRepository, times(3))
-                .upsertAll(eq(RankingPeriod.WEEKLY), anyList()),
+                .upsertAll(anyList()),
             () -> assertThat(stepExecution.getWriteCount()).isZero(),
             () -> assertThat(stepExecution.getSkipCount()).isZero()
         );
@@ -176,7 +175,7 @@ class CalculateProductRankingScoresRetryIntegrationTest {
         // arrange
         doThrow(new QueryTimeoutException("timeout"))
             .when(candidateRepository)
-            .upsertAll(eq(RankingPeriod.WEEKLY), anyList());
+            .upsertAll(anyList());
 
         // act
         JobExecution execution = jobLauncherTestUtils.launchJob(jobParameters());
@@ -187,7 +186,7 @@ class CalculateProductRankingScoresRetryIntegrationTest {
             () -> assertThat(execution.getExitStatus().getExitCode())
                 .isEqualTo(ExitStatus.FAILED.getExitCode()),
             () -> verify(candidateRepository, times(1))
-                .upsertAll(eq(RankingPeriod.WEEKLY), anyList()),
+                .upsertAll(anyList()),
             () -> assertThat(stepExecution.getSkipCount()).isZero()
         );
     }
@@ -196,7 +195,7 @@ class CalculateProductRankingScoresRetryIntegrationTest {
         doThrow(exception, exception)
             .doNothing()
             .when(candidateRepository)
-            .upsertAll(eq(RankingPeriod.WEEKLY), anyList());
+            .upsertAll(anyList());
     }
 
     private void assertCompletedAfterThreeAttempts(JobExecution execution) {
@@ -204,7 +203,7 @@ class CalculateProductRankingScoresRetryIntegrationTest {
         assertAll(
             () -> assertThat(execution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED),
             () -> verify(candidateRepository, times(3))
-                .upsertAll(eq(RankingPeriod.WEEKLY), anyList()),
+                .upsertAll(anyList()),
             () -> assertThat(stepExecution.getSkipCount()).isZero()
         );
     }

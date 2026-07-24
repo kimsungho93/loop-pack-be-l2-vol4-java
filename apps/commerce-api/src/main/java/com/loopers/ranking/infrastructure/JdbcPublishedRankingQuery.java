@@ -30,14 +30,12 @@ public class JdbcPublishedRankingQuery implements PublishedRankingQuery {
         select rank_no, product_id
         from mv_product_rank_weekly
         where snapshot_id = ?
-          and rank_no is not null
         order by rank_no asc
         """;
     private static final String MONTHLY_RANKING_SQL = """
         select rank_no, product_id
         from mv_product_rank_monthly
         where snapshot_id = ?
-          and rank_no is not null
         order by rank_no asc
         """;
 

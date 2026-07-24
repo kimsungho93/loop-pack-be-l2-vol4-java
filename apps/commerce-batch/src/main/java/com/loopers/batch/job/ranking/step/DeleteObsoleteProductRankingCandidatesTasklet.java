@@ -47,7 +47,7 @@ public class DeleteObsoleteProductRankingCandidatesTasklet implements Tasklet {
                 cleanupService.validateCleanupTarget(targetSnapshotId);
         }
 
-        int deleted = cleanupService.deleteUnrankedCandidates(
+        int deleted = cleanupService.deleteCandidates(
             cleanupTarget,
             DELETE_BATCH_SIZE
         );

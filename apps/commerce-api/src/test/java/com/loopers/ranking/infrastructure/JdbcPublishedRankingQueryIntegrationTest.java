@@ -62,7 +62,6 @@ class JdbcPublishedRankingQueryIntegrationTest {
         insertSnapshot(3L, RankingPeriod.WEEKLY, "2026-07-13", "2026-07-18", 2, true);
         insertWeeklyRank(3L, 302L, 4);
         insertWeeklyRank(3L, 301L, 1);
-        insertWeeklyRank(3L, 399L, null);
         updateCompletedAt(3L, LocalDateTime.of(2026, 7, 20, 2, 10));
 
         insertSnapshot(4L, RankingPeriod.WEEKLY, "2026-07-13", "2026-07-18", 3, false);
@@ -137,14 +136,16 @@ class JdbcPublishedRankingQueryIntegrationTest {
         );
     }
 
-    @DisplayName("탈락 후보를 Cleanup해도 공개된 Ranking 조회 결과는 바뀌지 않는다.")
+    @DisplayName("후보를 Cleanup해도 공개된 Ranking 조회 결과는 바뀌지 않는다.")
     @Test
-    void returnsSamePublishedRanking_afterUnrankedCandidatesAreDeleted() {
+    void returnsSamePublishedRanking_afterCandidatesAreDeleted() {
         // arrange
         insertSnapshot(1L, RankingPeriod.WEEKLY, "2026-07-13", "2026-07-15", 1, true);
         insertWeeklyRank(1L, 101L, 1);
         insertWeeklyRank(1L, 202L, 4);
-        insertWeeklyRank(1L, 303L, null);
+        insertCandidate(1L, 101L);
+        insertCandidate(1L, 202L);
+        insertCandidate(1L, 303L);
         PublishedRanking beforeCleanup = publishedRankingQuery
             .findLatestCompleted(RankingPeriod.WEEKLY, REQUEST_DATE)
             .orElseThrow();
@@ -152,9 +153,8 @@ class JdbcPublishedRankingQueryIntegrationTest {
         // act
         jdbcTemplate.update(
             """
-                delete from mv_product_rank_weekly
+                delete from product_rank_candidates
                 where snapshot_id = ?
-                  and rank_no is null
                 """,
             1L
         );
@@ -243,6 +243,21 @@ class JdbcPublishedRankingQueryIntegrationTest {
 
     private void insertWeeklyRank(long snapshotId, long productId, Integer rank) {
         insertRank("mv_product_rank_weekly", snapshotId, productId, rank);
+    }
+
+    private void insertCandidate(long snapshotId, long productId) {
+        jdbcTemplate.update(
+            """
+                insert into product_rank_candidates(
+                    snapshot_id,
+                    product_id,
+                    score
+                )
+                values (?, ?, 1.0)
+                """,
+            snapshotId,
+            productId
+        );
     }
 
     private void updateCompletedAt(long snapshotId, LocalDateTime completedAt) {

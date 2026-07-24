@@ -116,7 +116,6 @@ class PublishProductRankingAtomicityIntegrationTest {
             snapshotRepository.findBy(SNAPSHOT_KEY).orElseThrow();
         insertMetric(101L);
         candidateRepository.upsertAll(
-            RankingPeriod.WEEKLY,
             List.of(new RankingCandidate(snapshot.id(), 101L, 5.3))
         );
         JobParameters parameters = jobParameters();
@@ -129,7 +128,9 @@ class PublishProductRankingAtomicityIntegrationTest {
             snapshotRepository.findBy(SNAPSHOT_KEY).orElseThrow();
         assertAll(
             () -> assertThat(failedExecution.getStatus()).isEqualTo(BatchStatus.FAILED),
-            () -> assertThat(countRankedCandidates(snapshot.id())).isZero(),
+            () -> assertThat(candidateRepository.countCandidates(snapshot.id()))
+                .isEqualTo(1),
+            () -> assertThat(countPublishedRankings(snapshot.id())).isZero(),
             () -> assertThat(incompleteAfterFailure.completedAt()).isNull()
         );
 
@@ -145,7 +146,9 @@ class PublishProductRankingAtomicityIntegrationTest {
                 .isEqualTo(ExitStatus.COMPLETED),
             () -> assertThat(restartedExecution.getJobInstance().getInstanceId())
                 .isEqualTo(failedExecution.getJobInstance().getInstanceId()),
-            () -> assertThat(countRankedCandidates(snapshot.id())).isEqualTo(1),
+            () -> assertThat(candidateRepository.countCandidates(snapshot.id()))
+                .isEqualTo(1),
+            () -> assertThat(countPublishedRankings(snapshot.id())).isEqualTo(1),
             () -> assertThat(completed.completedAt()).isEqualTo(COMPLETED_AT)
         );
     }
@@ -169,13 +172,12 @@ class PublishProductRankingAtomicityIntegrationTest {
         );
     }
 
-    private long countRankedCandidates(long snapshotId) {
+    private long countPublishedRankings(long snapshotId) {
         return jdbcTemplate.queryForObject(
             """
                 select count(*)
                 from mv_product_rank_weekly
                 where snapshot_id = ?
-                  and rank_no is not null
                 """,
             Long.class,
             snapshotId

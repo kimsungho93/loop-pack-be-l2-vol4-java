@@ -125,24 +125,23 @@ class ProductRankingCleanupServiceTest {
         }
     }
 
-    @DisplayName("탈락 후보를 제한된 크기로 삭제할 때")
+    @DisplayName("후보를 제한된 크기로 삭제할 때")
     @Nested
-    class DeleteUnrankedCandidates {
+    class DeleteCandidates {
 
-        @DisplayName("검증된 대상의 기간과 ID로 삭제하고 실제 삭제 건수를 반환한다.")
+        @DisplayName("검증된 대상의 후보를 삭제하고 실제 삭제 건수를 반환한다.")
         @Test
-        void deletesUnrankedCandidatesFromTargetPeriod() {
+        void deletesCandidatesFromTargetSnapshot() {
             // arrange
             ProductRankingSnapshotHeader target = completedTarget();
-            when(candidateRepository.deleteUnrankedCandidates(
-                RankingPeriod.WEEKLY,
+            when(candidateRepository.deleteCandidates(
                 TARGET_SNAPSHOT_ID,
                 1_000
             )).thenReturn(1_000);
             ProductRankingCleanupService service = service();
 
             // act
-            int result = service.deleteUnrankedCandidates(target, 1_000);
+            int result = service.deleteCandidates(target, 1_000);
 
             // assert
             assertThat(result).isEqualTo(1_000);

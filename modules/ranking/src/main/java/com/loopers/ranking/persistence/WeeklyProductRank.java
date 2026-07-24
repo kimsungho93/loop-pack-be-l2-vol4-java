@@ -48,10 +48,10 @@ public class WeeklyProductRank {
 
     @Check(
         name = "ck_mv_product_rank_weekly_rank_no_range",
-        constraints = "rank_no is null or rank_no between 1 and 100"
+        constraints = "rank_no between 1 and 100"
     )
-    @Column(name = "rank_no")
-    private Integer rankNo;
+    @Column(name = "rank_no", nullable = false)
+    private int rankNo;
 
     @Column(name = "score", nullable = false)
     private double score;

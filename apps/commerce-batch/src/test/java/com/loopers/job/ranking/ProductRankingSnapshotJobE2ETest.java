@@ -4,6 +4,7 @@ import com.loopers.batch.job.ranking.ProductRankingSnapshotJobConfig;
 import com.loopers.ranking.RankingPeriod;
 import com.loopers.ranking.application.ProductRankingAssignment;
 import com.loopers.ranking.application.ProductRankingCandidateRepository;
+import com.loopers.ranking.application.ProductRankingResultRepository;
 import com.loopers.ranking.application.ProductRankingSnapshotHeader;
 import com.loopers.ranking.application.ProductRankingSnapshotKey;
 import com.loopers.ranking.application.ProductRankingSnapshotRepository;
@@ -69,6 +70,9 @@ class ProductRankingSnapshotJobE2ETest {
     private ProductRankingCandidateRepository candidateRepository;
 
     @Autowired
+    private ProductRankingResultRepository resultRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -103,7 +107,7 @@ class ProductRankingSnapshotJobE2ETest {
         ProductRankingSnapshotKey key = snapshotKey(period);
         ProductRankingSnapshotHeader snapshot = snapshotRepository.findBy(key).orElseThrow();
         List<ProductRankingAssignment> rankings =
-            candidateRepository.findRankedProducts(period, snapshot.id(), 101);
+            resultRepository.findPublishedRankings(period, snapshot.id(), 101);
         assertAll(
             () -> assertThat(execution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED),
             () -> assertThat(execution.getStepExecutions())
@@ -114,6 +118,8 @@ class ProductRankingSnapshotJobE2ETest {
                     ProductRankingSnapshotJobConfig.PUBLISH_STEP_NAME
                 ),
             () -> assertThat(rankings).containsExactlyElementsOf(expectedRankings(period)),
+            () -> assertThat(candidateRepository.countCandidates(snapshot.id()))
+                .isEqualTo(expectedRankings(period).size()),
             () -> assertThat(snapshot.createdAt()).isEqualTo(CREATED_AT),
             () -> assertThat(snapshot.completedAt()).isEqualTo(COMPLETED_AT),
             () -> assertThat(execution.getExecutionContext().containsKey("startTime")).isTrue()
@@ -135,7 +141,7 @@ class ProductRankingSnapshotJobE2ETest {
         assertAll(
             () -> assertThat(execution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED),
             () -> assertThat(execution.getStepExecutions()).hasSize(3),
-            () -> assertThat(candidateRepository.findRankedProducts(
+            () -> assertThat(resultRepository.findPublishedRankings(
                 period,
                 snapshot.id(),
                 101

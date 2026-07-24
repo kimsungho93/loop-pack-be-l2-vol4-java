@@ -6,6 +6,7 @@ import com.loopers.ranking.RankingScorePolicy;
 import com.loopers.ranking.application.NewProductRankingSnapshot;
 import com.loopers.ranking.application.ProductRankingAssignment;
 import com.loopers.ranking.application.ProductRankingCandidateRepository;
+import com.loopers.ranking.application.ProductRankingResultRepository;
 import com.loopers.ranking.application.ProductRankingSnapshotHeader;
 import com.loopers.ranking.application.ProductRankingSnapshotKey;
 import com.loopers.ranking.application.ProductRankingSnapshotRepository;
@@ -81,6 +82,9 @@ class PublishProductRankingStepIntegrationTest {
     private ProductRankingCandidateRepository candidateRepository;
 
     @Autowired
+    private ProductRankingResultRepository resultRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -110,7 +114,7 @@ class PublishProductRankingStepIntegrationTest {
         insertMetric(303L);
         insertMetric(401L);
         insertMetric(402L);
-        candidateRepository.upsertAll(period, List.of(
+        candidateRepository.upsertAll(List.of(
             new RankingCandidate(snapshot.id(), 402L, 5.3),
             new RankingCandidate(snapshot.id(), 303L, 10.0),
             new RankingCandidate(snapshot.id(), 401L, 5.3)
@@ -121,7 +125,7 @@ class PublishProductRankingStepIntegrationTest {
 
         // assert
         List<ProductRankingAssignment> rankings =
-            candidateRepository.findRankedProducts(period, snapshot.id(), 101);
+            resultRepository.findPublishedRankings(period, snapshot.id(), 101);
         ProductRankingSnapshotHeader completed =
             snapshotRepository.findBy(snapshot.key()).orElseThrow();
         assertAll(
@@ -148,7 +152,6 @@ class PublishProductRankingStepIntegrationTest {
         insertMetric(101L);
         insertMetric(202L);
         candidateRepository.upsertAll(
-            period,
             List.of(new RankingCandidate(snapshot.id(), 101L, 5.3))
         );
 
@@ -160,7 +163,7 @@ class PublishProductRankingStepIntegrationTest {
             snapshotRepository.findBy(snapshot.key()).orElseThrow();
         assertAll(
             () -> assertThat(execution.getStatus()).isEqualTo(BatchStatus.FAILED),
-            () -> assertThat(candidateRepository.findRankedProducts(
+            () -> assertThat(resultRepository.findPublishedRankings(
                 period,
                 snapshot.id(),
                 101
@@ -176,7 +179,7 @@ class PublishProductRankingStepIntegrationTest {
         RankingPeriod period = RankingPeriod.WEEKLY;
         ProductRankingSnapshotHeader snapshot = insertSnapshot(period);
         insertMetric(101L);
-        candidateRepository.upsertAll(period, List.of(
+        candidateRepository.upsertAll(List.of(
             new RankingCandidate(snapshot.id(), 101L, 5.3),
             new RankingCandidate(snapshot.id(), 202L, 3.0)
         ));
@@ -189,7 +192,7 @@ class PublishProductRankingStepIntegrationTest {
             snapshotRepository.findBy(snapshot.key()).orElseThrow();
         assertAll(
             () -> assertThat(execution.getStatus()).isEqualTo(BatchStatus.FAILED),
-            () -> assertThat(candidateRepository.findRankedProducts(
+            () -> assertThat(resultRepository.findPublishedRankings(
                 period,
                 snapshot.id(),
                 101
@@ -198,7 +201,7 @@ class PublishProductRankingStepIntegrationTest {
         );
     }
 
-    @DisplayName("101개 후보 중 점수가 높은 100개만 순위를 갖고 마지막 후보는 미공개로 남는다.")
+    @DisplayName("101개 후보 중 점수가 높은 100개만 공개 MV에 저장한다.")
     @Test
     void publishesOnlyTopOneHundredCandidates() throws Exception {
         // arrange
@@ -213,22 +216,31 @@ class PublishProductRankingStepIntegrationTest {
                 102 - productId
             ));
         }
-        candidateRepository.upsertAll(period, candidates);
+        candidateRepository.upsertAll(candidates);
 
         // act
         JobExecution execution = jobLauncherTestUtils.launchJob(jobParameters(period));
 
         // assert
         List<ProductRankingAssignment> rankings =
-            candidateRepository.findRankedProducts(period, snapshot.id(), 101);
-        Integer lastCandidateRank = jdbcTemplate.queryForObject(
+            resultRepository.findPublishedRankings(period, snapshot.id(), 101);
+        Long excludedCandidateCount = jdbcTemplate.queryForObject(
             """
-                select rank_no
+                select count(*)
                 from mv_product_rank_weekly
                 where snapshot_id = ?
                   and product_id = 101
                 """,
-            Integer.class,
+            Long.class,
+            snapshot.id()
+        );
+        Long publishedCount = jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from mv_product_rank_weekly
+                where snapshot_id = ?
+                """,
+            Long.class,
             snapshot.id()
         );
         assertAll(
@@ -238,7 +250,10 @@ class PublishProductRankingStepIntegrationTest {
                 .isEqualTo(new ProductRankingAssignment(1L, 101.0, 1)),
             () -> assertThat(rankings.getLast())
                 .isEqualTo(new ProductRankingAssignment(100L, 2.0, 100)),
-            () -> assertThat(lastCandidateRank).isNull()
+            () -> assertThat(candidateRepository.countCandidates(snapshot.id()))
+                .isEqualTo(101),
+            () -> assertThat(publishedCount).isEqualTo(100),
+            () -> assertThat(excludedCandidateCount).isZero()
         );
     }
 
@@ -257,7 +272,7 @@ class PublishProductRankingStepIntegrationTest {
             snapshotRepository.findBy(snapshot.key()).orElseThrow();
         assertAll(
             () -> assertThat(execution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED),
-            () -> assertThat(candidateRepository.findRankedProducts(
+            () -> assertThat(resultRepository.findPublishedRankings(
                 period,
                 snapshot.id(),
                 101
@@ -280,8 +295,8 @@ class PublishProductRankingStepIntegrationTest {
             new ProductRankingAssignment(101L, 5.3, 1),
             new ProductRankingAssignment(202L, 3.0, 2)
         );
-        candidateRepository.upsertAll(period, candidates);
-        candidateRepository.assignRanks(period, snapshot.id(), assignments);
+        candidateRepository.upsertAll(candidates);
+        resultRepository.insertAll(period, snapshot.id(), assignments);
         Instant previousCompletedAt = Instant.parse("2026-07-20T02:05:00Z");
         snapshotRepository.completeIfIncomplete(snapshot.id(), previousCompletedAt);
 
@@ -293,7 +308,7 @@ class PublishProductRankingStepIntegrationTest {
             snapshotRepository.findBy(snapshot.key()).orElseThrow();
         assertAll(
             () -> assertThat(execution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED),
-            () -> assertThat(candidateRepository.findRankedProducts(
+            () -> assertThat(resultRepository.findPublishedRankings(
                 period,
                 snapshot.id(),
                 101

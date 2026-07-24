@@ -41,6 +41,9 @@ class ProductRankingPublicationServiceTest {
     private ProductRankingCandidateRepository candidateRepository;
 
     @Mock
+    private ProductRankingResultRepository resultRepository;
+
+    @Mock
     private ProductRankingSourceQuery sourceQuery;
 
     @DisplayName("상품 랭킹 Snapshot을 공개할 때")
@@ -67,20 +70,19 @@ class ProductRankingPublicationServiceTest {
                 SNAPSHOT_KEY.periodStart(),
                 SNAPSHOT_KEY.aggregationEndDate()
             )).thenReturn(3L);
-            when(candidateRepository.countCandidates(RankingPeriod.WEEKLY, snapshot.id()))
+            when(candidateRepository.countCandidates(snapshot.id()))
                 .thenReturn(3L);
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 1
             ))
                 .thenReturn(List.of());
             when(candidateRepository.findTopCandidates(
-                RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.TOP_LIMIT
             )).thenReturn(topCandidates);
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.VERIFICATION_LIMIT
@@ -93,7 +95,7 @@ class ProductRankingPublicationServiceTest {
             service.publish(SNAPSHOT_KEY);
 
             // assert
-            verify(candidateRepository).assignRanks(
+            verify(resultRepository).insertAll(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 expectedRankings
@@ -111,7 +113,7 @@ class ProductRankingPublicationServiceTest {
                 SNAPSHOT_KEY.periodStart(),
                 SNAPSHOT_KEY.aggregationEndDate()
             )).thenReturn(3L);
-            when(candidateRepository.countCandidates(RankingPeriod.WEEKLY, snapshot.id()))
+            when(candidateRepository.countCandidates(snapshot.id()))
                 .thenReturn(2L);
             ProductRankingPublicationService service = service();
 
@@ -120,7 +122,7 @@ class ProductRankingPublicationServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("source")
                 .hasMessageContaining("candidate");
-            verify(candidateRepository, never()).assignRanks(
+            verify(resultRepository, never()).insertAll(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyList()
@@ -141,9 +143,9 @@ class ProductRankingPublicationServiceTest {
                 SNAPSHOT_KEY.periodStart(),
                 SNAPSHOT_KEY.aggregationEndDate()
             )).thenReturn(1L);
-            when(candidateRepository.countCandidates(RankingPeriod.WEEKLY, snapshot.id()))
+            when(candidateRepository.countCandidates(snapshot.id()))
                 .thenReturn(1L);
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 1
@@ -155,7 +157,6 @@ class ProductRankingPublicationServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("rank");
             verify(candidateRepository, never()).findTopCandidates(
-                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyInt()
             );
@@ -175,20 +176,19 @@ class ProductRankingPublicationServiceTest {
                 SNAPSHOT_KEY.periodStart(),
                 SNAPSHOT_KEY.aggregationEndDate()
             )).thenReturn(0L);
-            when(candidateRepository.countCandidates(RankingPeriod.WEEKLY, snapshot.id()))
+            when(candidateRepository.countCandidates(snapshot.id()))
                 .thenReturn(0L);
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 1
             ))
                 .thenReturn(List.of());
             when(candidateRepository.findTopCandidates(
-                RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.TOP_LIMIT
             )).thenReturn(List.of());
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.VERIFICATION_LIMIT
@@ -201,7 +201,7 @@ class ProductRankingPublicationServiceTest {
             service.publish(SNAPSHOT_KEY);
 
             // assert
-            verify(candidateRepository).assignRanks(
+            verify(resultRepository).insertAll(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 List.of()
@@ -215,7 +215,7 @@ class ProductRankingPublicationServiceTest {
             // arrange
             ProductRankingSnapshotHeader snapshot = completedSnapshot();
             when(snapshotRepository.findBy(SNAPSHOT_KEY)).thenReturn(Optional.of(snapshot));
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.VERIFICATION_LIMIT
@@ -235,10 +235,9 @@ class ProductRankingPublicationServiceTest {
                 org.mockito.ArgumentMatchers.any()
             );
             verify(candidateRepository, never()).countCandidates(
-                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyLong()
             );
-            verify(candidateRepository, never()).assignRanks(
+            verify(resultRepository, never()).insertAll(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyList()
@@ -255,7 +254,7 @@ class ProductRankingPublicationServiceTest {
             // arrange
             ProductRankingSnapshotHeader snapshot = completedSnapshot();
             when(snapshotRepository.findBy(SNAPSHOT_KEY)).thenReturn(Optional.of(snapshot));
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.VERIFICATION_LIMIT
@@ -288,19 +287,18 @@ class ProductRankingPublicationServiceTest {
                 SNAPSHOT_KEY.periodStart(),
                 SNAPSHOT_KEY.aggregationEndDate()
             )).thenReturn(1L);
-            when(candidateRepository.countCandidates(RankingPeriod.WEEKLY, snapshot.id()))
+            when(candidateRepository.countCandidates(snapshot.id()))
                 .thenReturn(1L);
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 1
             )).thenReturn(List.of());
             when(candidateRepository.findTopCandidates(
-                RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.TOP_LIMIT
             )).thenReturn(topCandidates);
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.VERIFICATION_LIMIT
@@ -333,20 +331,19 @@ class ProductRankingPublicationServiceTest {
                 SNAPSHOT_KEY.periodStart(),
                 SNAPSHOT_KEY.aggregationEndDate()
             )).thenReturn(1L);
-            when(candidateRepository.countCandidates(RankingPeriod.WEEKLY, snapshot.id()))
+            when(candidateRepository.countCandidates(snapshot.id()))
                 .thenReturn(1L);
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 1
             ))
                 .thenReturn(List.of());
             when(candidateRepository.findTopCandidates(
-                RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.TOP_LIMIT
             )).thenReturn(topCandidates);
-            when(candidateRepository.findRankedProducts(
+            when(resultRepository.findPublishedRankings(
                 RankingPeriod.WEEKLY,
                 snapshot.id(),
                 ProductRankingPublicationService.VERIFICATION_LIMIT
@@ -366,6 +363,7 @@ class ProductRankingPublicationServiceTest {
         return new ProductRankingPublicationService(
             snapshotRepository,
             candidateRepository,
+            resultRepository,
             sourceQuery,
             CLOCK
         );

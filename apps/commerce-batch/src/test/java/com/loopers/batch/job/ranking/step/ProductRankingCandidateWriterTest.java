@@ -1,6 +1,5 @@
 package com.loopers.batch.job.ranking.step;
 
-import com.loopers.ranking.RankingPeriod;
 import com.loopers.ranking.application.ProductRankingCandidateRepository;
 import com.loopers.ranking.application.RankingCandidate;
 import org.junit.jupiter.api.DisplayName;
@@ -20,15 +19,12 @@ class ProductRankingCandidateWriterTest {
     @Mock
     private ProductRankingCandidateRepository candidateRepository;
 
-    @DisplayName("실행 기간과 Chunk 후보를 저장소에 전달한다.")
+    @DisplayName("Chunk 후보를 후보 저장소에 전달한다.")
     @Test
     void writesCandidatesForExecutionPeriod() {
         // arrange
         ProductRankingCandidateWriter writer = new ProductRankingCandidateWriter(
-            candidateRepository,
-            "WEEKLY",
-            "20260719",
-            1L
+            candidateRepository
         );
         List<RankingCandidate> candidates = List.of(
             new RankingCandidate(10L, 101L, 5.3),
@@ -39,6 +35,6 @@ class ProductRankingCandidateWriterTest {
         writer.write(new Chunk<>(candidates));
 
         // assert
-        verify(candidateRepository).upsertAll(RankingPeriod.WEEKLY, candidates);
+        verify(candidateRepository).upsertAll(candidates);
     }
 }

@@ -91,7 +91,7 @@ class CalculateProductRankingScoresStepIntegrationTest {
         databaseCleanUp.truncateAllTables();
     }
 
-    @DisplayName("기간 내 상품별 점수를 계산해 rank_no가 없는 후보로 저장한다.")
+    @DisplayName("기간 내 상품별 점수를 계산해 공개 MV와 분리된 후보로 저장한다.")
     @EnumSource(value = RankingPeriod.class, names = {"WEEKLY", "MONTHLY"})
     @ParameterizedTest
     void calculatesAndStoresCandidates(RankingPeriod period) throws Exception {
@@ -111,7 +111,7 @@ class CalculateProductRankingScoresStepIntegrationTest {
         // assert
         StepExecution stepExecution = execution.getStepExecutions().iterator().next();
         ProductRankingSnapshotHeader snapshot = snapshotRepository.findBy(key).orElseThrow();
-        List<CandidateRow> candidates = candidates(period, snapshot.id());
+        List<CandidateRow> candidates = candidates(snapshot.id());
         int expectedCount = period == RankingPeriod.WEEKLY ? 2 : 3;
         assertAll(
             () -> assertThat(execution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED),
@@ -122,9 +122,6 @@ class CalculateProductRankingScoresStepIntegrationTest {
             () -> assertThat(stepExecution.getCommitCount()).isEqualTo(2),
             () -> assertThat(stepExecution.getSkipCount()).isZero(),
             () -> assertThat(candidates).hasSize(expectedCount),
-            () -> assertThat(candidates).allSatisfy(
-                candidate -> assertThat(candidate.rankNo()).isNull()
-            ),
             () -> assertThat(candidates.get(0).productId()).isEqualTo(101L),
             () -> assertThat(candidates.get(0).score()).isCloseTo(5.3, offset(1.0e-10)),
             () -> assertThat(candidates.get(1).productId()).isEqualTo(202L),
@@ -136,7 +133,8 @@ class CalculateProductRankingScoresStepIntegrationTest {
                 }
             },
             () -> assertThat(snapshot.completedAt()).isNull(),
-            () -> assertThat(countCandidates(otherTableName(period))).isZero()
+            () -> assertThat(countCandidates("mv_product_rank_weekly")).isZero(),
+            () -> assertThat(countCandidates("mv_product_rank_monthly")).isZero()
         );
     }
 
@@ -156,13 +154,16 @@ class CalculateProductRankingScoresStepIntegrationTest {
         );
     }
 
-    private List<CandidateRow> candidates(RankingPeriod period, long snapshotId) {
+    private List<CandidateRow> candidates(long snapshotId) {
         return jdbcTemplate.query(
-            "select product_id, rank_no, score from " + tableName(period)
-                + " where snapshot_id = ? order by product_id",
+            """
+                select product_id, score
+                from product_rank_candidates
+                where snapshot_id = ?
+                order by product_id
+                """,
             (resultSet, rowNumber) -> new CandidateRow(
                 resultSet.getLong("product_id"),
-                resultSet.getObject("rank_no", Integer.class),
                 resultSet.getDouble("score")
             ),
             snapshotId
@@ -174,22 +175,6 @@ class CalculateProductRankingScoresStepIntegrationTest {
             "select count(*) from " + tableName,
             Long.class
         );
-    }
-
-    private String tableName(RankingPeriod period) {
-        return switch (period) {
-            case WEEKLY -> "mv_product_rank_weekly";
-            case MONTHLY -> "mv_product_rank_monthly";
-            case DAILY -> throw new IllegalArgumentException("DAILY is not supported");
-        };
-    }
-
-    private String otherTableName(RankingPeriod period) {
-        return switch (period) {
-            case WEEKLY -> "mv_product_rank_monthly";
-            case MONTHLY -> "mv_product_rank_weekly";
-            case DAILY -> throw new IllegalArgumentException("DAILY is not supported");
-        };
     }
 
     private void insertMetric(
@@ -221,7 +206,7 @@ class CalculateProductRankingScoresStepIntegrationTest {
         );
     }
 
-    private record CandidateRow(long productId, Integer rankNo, double score) {
+    private record CandidateRow(long productId, double score) {
     }
 
     @TestConfiguration(proxyBeanMethods = false)

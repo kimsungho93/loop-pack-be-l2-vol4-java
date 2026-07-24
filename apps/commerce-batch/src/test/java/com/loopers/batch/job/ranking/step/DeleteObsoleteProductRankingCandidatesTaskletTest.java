@@ -47,7 +47,7 @@ class DeleteObsoleteProductRankingCandidatesTaskletTest {
         // arrange
         when(cleanupService.validateCleanupTarget(TARGET_SNAPSHOT_ID))
             .thenReturn(TARGET);
-        when(cleanupService.deleteUnrankedCandidates(TARGET, 1_000))
+        when(cleanupService.deleteCandidates(TARGET, 1_000))
             .thenReturn(1_000, 17);
         DeleteObsoleteProductRankingCandidatesTasklet tasklet =
             new DeleteObsoleteProductRankingCandidatesTasklet(
@@ -66,17 +66,17 @@ class DeleteObsoleteProductRankingCandidatesTaskletTest {
             () -> verify(cleanupService)
                 .validateCleanupTarget(TARGET_SNAPSHOT_ID),
             () -> verify(cleanupService, times(2))
-                .deleteUnrankedCandidates(TARGET, 1_000)
+                .deleteCandidates(TARGET, 1_000)
         );
     }
 
-    @DisplayName("삭제할 탈락 후보가 없으면 멱등하게 종료한다.")
+    @DisplayName("삭제할 후보가 없으면 멱등하게 종료한다.")
     @Test
     void finishesWhenNoCandidateIsDeleted() {
         // arrange
         when(cleanupService.validateCleanupTarget(TARGET_SNAPSHOT_ID))
             .thenReturn(TARGET);
-        when(cleanupService.deleteUnrankedCandidates(TARGET, 1_000))
+        when(cleanupService.deleteCandidates(TARGET, 1_000))
             .thenReturn(0);
         DeleteObsoleteProductRankingCandidatesTasklet tasklet =
             new DeleteObsoleteProductRankingCandidatesTasklet(

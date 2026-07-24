@@ -118,7 +118,7 @@ class ProductMetricAggregateReaderRetryIntegrationTest {
 
         // assert
         Long candidateCount = jdbcTemplate.queryForObject(
-            "select count(*) from mv_product_rank_weekly",
+            "select count(*) from product_rank_candidates",
             Long.class
         );
         assertAll(

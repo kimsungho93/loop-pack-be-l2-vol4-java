@@ -1,39 +1,17 @@
 package com.loopers.ranking.application;
 
-import com.loopers.ranking.RankingPeriod;
-
 import java.util.List;
 
 public interface ProductRankingCandidateRepository {
 
-    void upsertAll(
-        RankingPeriod period,
-        List<? extends RankingCandidate> candidates
-    );
+    void upsertAll(List<? extends RankingCandidate> candidates);
 
-    long countCandidates(RankingPeriod period, long snapshotId);
+    long countCandidates(long snapshotId);
 
     List<RankingCandidate> findTopCandidates(
-        RankingPeriod period,
         long snapshotId,
         int limit
     );
 
-    void assignRanks(
-        RankingPeriod period,
-        long snapshotId,
-        List<ProductRankingAssignment> assignments
-    );
-
-    List<ProductRankingAssignment> findRankedProducts(
-        RankingPeriod period,
-        long snapshotId,
-        int limit
-    );
-
-    int deleteUnrankedCandidates(
-        RankingPeriod period,
-        long snapshotId,
-        int limit
-    );
+    int deleteCandidates(long snapshotId, int limit);
 }
